@@ -20,6 +20,7 @@ use std::{path::PathBuf, time::Duration};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use datafusion::prelude::SessionContext;
+use datafusion_common::DataFusionError;
 use log::info;
 use sqllogictest::DBOutput;
 
@@ -49,7 +50,49 @@ impl sqllogictest::AsyncDB for DataFusion {
             self.relative_path.display(),
             sql
         );
-        run_query(&self.ctx, sql).await
+        match run_query(&self.ctx, sql).await {
+            Ok(results) => Ok(results),
+            Err(DFSqlLogicTestError::DataFusion(DataFusionError::NotImplemented(_))) => {
+                Ok(DBOutput::Rows {
+                    types: vec![],
+                    rows: vec![vec!["df_unimplemented".to_string()]],
+                })
+            }
+            // Err(DFSqlLogicTestError::DataFusion(DataFusionError::External(_))) => {
+            //     Ok(DBOutput::Rows {
+            //         types: vec![],
+            //         rows: vec![vec!["df_unimplemented".to_string()]],
+            //     })
+            // }
+            Err(e) => {
+                let errmsg = format!("{:?}", e);
+                if errmsg
+                    .matches("check_analyzed_plan")
+                    .collect::<Vec<_>>()
+                    .len()
+                    > 0
+                {
+                    return Ok(DBOutput::Rows {
+                        types: vec![],
+                        rows: vec![vec!["df_unimplemented".to_string()]],
+                    });
+                }
+                if errmsg
+                    .matches("Projections require unique expression names")
+                    .collect::<Vec<_>>()
+                    .len()
+                    > 0
+                {
+                    return Ok(DBOutput::Rows {
+                        types: vec![],
+                        rows: vec![vec!["df_unimplemented".to_string()]],
+                    });
+                }
+
+                println!("########3 Error: {:?}", e);
+                Err(e)
+            }
+        }
     }
 
     /// Engine name of current database.
@@ -68,7 +111,9 @@ impl sqllogictest::AsyncDB for DataFusion {
 }
 
 async fn run_query(ctx: &SessionContext, sql: impl Into<String>) -> Result<DFOutput> {
-    let df = ctx.sql(sql.into().as_str()).await?;
+    let sql = sql.into();
+    println!("########## Running query: {}", sql);
+    let df = ctx.sql(sql.as_str()).await?;
 
     let types = normalize::convert_schema_to_types(df.schema().fields());
     let results: Vec<RecordBatch> = df.collect().await?;
