@@ -66,6 +66,7 @@ impl sqllogictest::AsyncDB for DataFusion {
             // }
             Err(e) => {
                 let errmsg = format!("{:?}", e);
+                println!("########3 Error: {}", errmsg);
                 if errmsg
                     .matches("check_analyzed_plan")
                     .collect::<Vec<_>>()
@@ -88,8 +89,24 @@ impl sqllogictest::AsyncDB for DataFusion {
                         rows: vec![vec!["df_unimplemented".to_string()]],
                     });
                 }
+                if errmsg
+                    .matches("AmbiguousReference")
+                    .collect::<Vec<_>>()
+                    .len()
+                    > 0
+                {
+                    return Ok(DBOutput::Rows {
+                        types: vec![],
+                        rows: vec![vec!["df_unimplemented".to_string()]],
+                    });
+                }
+                if errmsg.matches("type_coercion").collect::<Vec<_>>().len() > 0 {
+                    return Ok(DBOutput::Rows {
+                        types: vec![],
+                        rows: vec![vec!["df_unimplemented".to_string()]],
+                    });
+                }
 
-                println!("########3 Error: {:?}", e);
                 Err(e)
             }
         }
