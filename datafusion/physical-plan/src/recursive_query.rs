@@ -337,8 +337,6 @@ fn assign_work_table(
                     exec.with_work_table(work_table.clone()),
                 )))
             }
-        } else if plan.as_any().is::<RecursiveQueryExec>() {
-            not_impl_err!("Recursive queries cannot be nested")
         } else {
             Ok(Transformed::no(plan))
         }

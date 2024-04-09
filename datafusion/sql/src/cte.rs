@@ -169,9 +169,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         let recursive_plan =
             self.set_expr_to_plan(*right_expr, &mut planner_context.clone())?;
 
-        // Check if the recursive term references the CTE itself,
-        // if not, it is a non-recursive CTE
-        if !has_work_table_reference(&recursive_plan, &work_table_source) {
+        // Validate the plan and check if the CTE is really recursive.
+        // A WITH clause including the RECURSIVE keyword may also define non-recursive CTEs.
+        // For example:
+        //   WITH RECURSIVE cte AS(
+        //        SELECT 1 UNION ALL SELECT 2
+        //   ) SELECT * FROM cte;
+        //
+        if !check_recursive_plan(&recursive_plan, &work_table_source)? {
             // Remove the work table plan from the context
             planner_context.remove_cte(&cte_name);
             // Compile it as a non-recursive CTE
@@ -182,7 +187,6 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 set_quantifier,
             );
         }
-
         // ---------- Step 4: Create the final plan ------------------
         // Step 4.1: Compile the final plan
         let distinct = !Self::is_union_all(set_quantifier)?;
@@ -192,21 +196,29 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     }
 }
 
-fn has_work_table_reference(
+/// Returns whether the CTE it belongs to is recursive.
+fn check_recursive_plan(
     plan: &LogicalPlan,
     work_table_source: &Arc<dyn TableSource>,
-) -> bool {
-    let mut has_reference = false;
+) -> Result<bool> {
+    // If the plan does not reference the work table, then the CTE is not recursive.
+    // Default to false. Change it to true if we find a reference to the work table.
+    let mut is_recursive = false;
     plan.apply(&mut |node| {
-        if let LogicalPlan::TableScan(scan) = node {
-            if Arc::ptr_eq(&scan.source, work_table_source) {
-                has_reference = true;
-                return Ok(TreeNodeRecursion::Stop);
+        match node {
+            LogicalPlan::TableScan(scan)
+                if Arc::ptr_eq(&scan.source, work_table_source) =>
+            {
+                is_recursive = true;
             }
+            LogicalPlan::RecursiveQuery { .. } => {
+                // The plan contains another recursive CTE, and
+                // nested recursive CTE is not supported yet.
+                return not_impl_err!("Recursive queries cannot be nested");
+            }
+            _ => {}
         }
         Ok(TreeNodeRecursion::Continue)
-    })
-    // Closure always return Ok
-    .unwrap();
-    has_reference
+    })?;
+    Ok(is_recursive)
 }
