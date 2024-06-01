@@ -32,7 +32,7 @@ use datafusion_common::{exec_err, plan_err, Result, ScalarValue};
 
 use core::any::type_name;
 use datafusion_common::DataFusionError;
-use datafusion_expr::{ColumnarValue, ScalarFunctionImplementation};
+use datafusion_expr::{ColumnarValue, Expr, ScalarFunctionImplementation};
 
 macro_rules! downcast_arg {
     ($ARG:expr, $ARRAY_TYPE:ident) => {{
@@ -251,6 +251,11 @@ pub(crate) fn compute_array_dims(
             _ => return Ok(Some(res)),
         }
     }
+}
+
+/// Returns the name of the expression at index `i`, or an empty string if out of bounds.
+pub(super) fn get_expr_name(exprs: &[Expr], i: usize) -> String {
+    exprs.get(i).map(ToString::to_string).unwrap_or_default()
 }
 
 #[cfg(test)]
