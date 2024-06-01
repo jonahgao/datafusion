@@ -20,12 +20,13 @@
 use arrow::array::Array;
 use arrow::array::ArrayRef;
 use arrow::array::ArrowNativeTypeOp;
+use arrow::array::BooleanBufferBuilder;
 use arrow::array::Capacities;
 use arrow::array::GenericListArray;
 use arrow::array::Int64Array;
 use arrow::array::MutableArrayData;
 use arrow::array::OffsetSizeTrait;
-use arrow::buffer::OffsetBuffer;
+use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::DataType;
 use arrow_schema::DataType::{FixedSizeList, LargeList, List};
 use arrow_schema::Field;
@@ -239,7 +240,7 @@ pub(super) struct ArraySlice {
 impl ArraySlice {
     pub fn new() -> Self {
         Self {
-            signature: Signature::variadic_any(Volatility::Immutable),
+            signature: Signature::user_defined(Volatility::Immutable),
             aliases: vec![String::from("list_slice")],
         }
     }
@@ -273,6 +274,21 @@ impl ScalarUDFImpl for ArraySlice {
 
     fn aliases(&self) -> &[String] {
         &self.aliases
+    }
+
+    fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>> {
+        let args_len = arg_types.len();
+        if args_len != 3 && args_len != 4 {
+            return plan_err!("array_slice needs three or four arguments");
+        }
+        if !matches!(arg_types[0], List(_) | LargeList(_) | DataType::Null) {
+            return plan_err!("array_slice does not support type: {:?}", arg_types[0]);
+        }
+        let mut new_types = vec![arg_types[0].clone(), DataType::Int64, DataType::Int64];
+        if args_len == 4 {
+            new_types.push(DataType::Int64);
+        }
+        Ok(new_types)
     }
 }
 
@@ -319,6 +335,7 @@ fn array_slice_inner(args: &[ArrayRef]) -> Result<ArrayRef> {
             let to_array = as_int64_array(&args[2])?;
             general_array_slice::<i64>(array, from_array, to_array, stride)
         }
+        DataType::Null => Ok(args[0].clone()),
         _ => exec_err!("array_slice does not support type: {:?}", array_data_type),
     }
 }
@@ -401,8 +418,27 @@ where
     }
 
     let mut offsets = vec![O::usize_as(0)];
+    let mut valid = BooleanBufferBuilder::new(array.len());
 
     for (row_index, offset_window) in array.offsets().windows(2).enumerate() {
+        // If any of the arguments is null, the result is null.
+        let is_null = array.is_null(row_index)
+            || from_array.is_null(row_index)
+            || to_array.is_null(row_index)
+            || stride.map(|s| s.is_null(row_index)).unwrap_or(false);
+        if is_null {
+            offsets.push(offsets[row_index]);
+            valid.append(false);
+            continue;
+        }
+        // Default stride is 1 if not provided
+        // let stride = stride.map(|s| s.value(row_index)).unwrap_or(1);
+        // if stride == 0 {
+        //     return exec_err!(
+        //         "array_slice got invalid stride: {:?}, it cannot be 0",
+        //         stride
+        //     );
+        // }
         let start = offset_window[0];
         let end = offset_window[1];
         let len = end - start;
@@ -410,6 +446,7 @@ where
         // len 0 indicate array is null, return empty array in this row.
         if len == O::usize_as(0) {
             offsets.push(offsets[row_index]);
+            valid.append(true);
             continue;
         }
 
@@ -440,6 +477,7 @@ where
             {
                 // return empty array
                 offsets.push(offsets[row_index]);
+                valid.append(true);
                 continue;
             }
 
@@ -457,6 +495,7 @@ where
                         (start + to + O::usize_as(1)).to_usize().unwrap(),
                     );
                     offsets.push(offsets[row_index] + (to - from + O::usize_as(1)));
+                    valid.append(true);
                     continue;
                 }
                 let mut index = start + from;
@@ -470,6 +509,7 @@ where
                     index += stride;
                     cnt += 1;
                 }
+                valid.append(true);
                 offsets.push(offsets[row_index] + O::usize_as(cnt));
             } else {
                 let mut index = start + from;
@@ -485,10 +525,12 @@ where
                 }
                 // invalid range, return empty array
                 offsets.push(offsets[row_index] + O::usize_as(cnt));
+                valid.append(true);
             }
         } else {
             // invalid range, return empty array
             offsets.push(offsets[row_index]);
+            valid.append(true);
         }
     }
 
@@ -498,7 +540,7 @@ where
         Arc::new(Field::new("item", array.value_type(), true)),
         OffsetBuffer::<O>::new(offsets.into()),
         arrow_array::make_array(data),
-        None,
+        Some(NullBuffer::new(valid.finish())),
     )?))
 }
 
