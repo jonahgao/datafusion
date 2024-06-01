@@ -34,7 +34,7 @@ use datafusion_common::cast::as_int64_array;
 use datafusion_common::cast::as_large_list_array;
 use datafusion_common::cast::as_list_array;
 use datafusion_common::{
-    exec_err, internal_datafusion_err, plan_err, DataFusionError, Result,
+    exec_err, internal_datafusion_err, internal_err, plan_err, DataFusionError, Result,
 };
 use datafusion_expr::Expr;
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
@@ -284,6 +284,7 @@ impl ScalarUDFImpl for ArraySlice {
         if !matches!(arg_types[0], List(_) | LargeList(_) | DataType::Null) {
             return plan_err!("array_slice does not support type: {:?}", arg_types[0]);
         }
+        // `array_slice(array, from, to)` or `array_slice(array, from, to, stride)`
         let mut new_types = vec![arg_types[0].clone(), DataType::Int64, DataType::Int64];
         if args_len == 4 {
             new_types.push(DataType::Int64);
@@ -310,33 +311,26 @@ impl ScalarUDFImpl for ArraySlice {
 /// See test cases in `array.slt` for more details.
 fn array_slice_inner(args: &[ArrayRef]) -> Result<ArrayRef> {
     let args_len = args.len();
-    if args_len != 3 && args_len != 4 {
-        return exec_err!("array_slice needs three or four arguments");
-    }
-
+    // Ensured by `coerce_types`
+    debug_assert!(args_len == 3 || args_len == 4);
+    let from_array = as_int64_array(&args[1])?;
+    let to_array = as_int64_array(&args[2])?;
     let stride = if args_len == 4 {
         Some(as_int64_array(&args[3])?)
     } else {
         None
     };
-
-    let from_array = as_int64_array(&args[1])?;
-    let to_array = as_int64_array(&args[2])?;
-
-    let array_data_type = args[0].data_type();
-    match array_data_type {
+    match args[0].data_type() {
         List(_) => {
             let array = as_list_array(&args[0])?;
             general_array_slice::<i32>(array, from_array, to_array, stride)
         }
         LargeList(_) => {
             let array = as_large_list_array(&args[0])?;
-            let from_array = as_int64_array(&args[1])?;
-            let to_array = as_int64_array(&args[2])?;
             general_array_slice::<i64>(array, from_array, to_array, stride)
         }
         DataType::Null => Ok(args[0].clone()),
-        _ => exec_err!("array_slice does not support type: {:?}", array_data_type),
+        other => internal_err!("array_slice does not support type: {:?}", other),
     }
 }
 
@@ -431,6 +425,7 @@ where
             valid.append(false);
             continue;
         }
+
         // Default stride is 1 if not provided
         // let stride = stride.map(|s| s.value(row_index)).unwrap_or(1);
         // if stride == 0 {
