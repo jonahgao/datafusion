@@ -600,8 +600,11 @@ impl SessionContext {
         &self,
         expr: Expr,
         df_schema: &DFSchema,
+        schema: &Schema,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        self.state.read().create_physical_expr(expr, df_schema)
+        self.state
+            .read()
+            .create_physical_expr(expr, df_schema, schema)
     }
 
     // return an empty dataframe

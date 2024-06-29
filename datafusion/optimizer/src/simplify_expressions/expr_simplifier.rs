@@ -629,11 +629,15 @@ impl<'a> ConstEvaluator<'a> {
             return ConstSimplifyResult::NotSimplified(s);
         }
 
-        let phys_expr =
-            match create_physical_expr(&expr, &self.input_schema, self.execution_props) {
-                Ok(e) => e,
-                Err(err) => return ConstSimplifyResult::SimplifyRuntimeError(err, expr),
-            };
+        let phys_expr = match create_physical_expr(
+            &expr,
+            &self.input_schema,
+            self.input_schema.as_arrow(),
+            self.execution_props,
+        ) {
+            Ok(e) => e,
+            Err(err) => return ConstSimplifyResult::SimplifyRuntimeError(err, expr),
+        };
         let col_val = match phys_expr.evaluate(&self.input_batch) {
             Ok(v) => v,
             Err(err) => return ConstSimplifyResult::SimplifyRuntimeError(err, expr),

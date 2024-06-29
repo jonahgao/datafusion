@@ -380,6 +380,7 @@ pub trait PhysicalPlanner: Send + Sync {
         &self,
         expr: &Expr,
         input_dfschema: &DFSchema,
+        input_schema: &Schema,
         session_state: &SessionState,
     ) -> Result<Arc<dyn PhysicalExpr>>;
 }
@@ -460,9 +461,15 @@ impl PhysicalPlanner for DefaultPhysicalPlanner {
         &self,
         expr: &Expr,
         input_dfschema: &DFSchema,
+        input_schema: &Schema,
         session_state: &SessionState,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        create_physical_expr(expr, input_dfschema, session_state.execution_props())
+        create_physical_expr(
+            expr,
+            input_dfschema,
+            input_schema,
+            session_state.execution_props(),
+        )
     }
 }
 
@@ -725,7 +732,12 @@ impl DefaultPhysicalPlanner {
                     .map(|row| {
                         row.iter()
                             .map(|expr| {
-                                self.create_physical_expr(expr, schema, session_state)
+                                self.create_physical_expr(
+                                    expr,
+                                    schema,
+                                    &exec_schema,
+                                    session_state,
+                                )
                             })
                             .collect::<Result<Vec<Arc<dyn PhysicalExpr>>>>()
                     })
@@ -856,7 +868,12 @@ impl DefaultPhysicalPlanner {
                     partition_keys
                         .iter()
                         .map(|e| {
-                            self.create_physical_expr(e, input.schema(), session_state)
+                            self.create_physical_expr(
+                                e,
+                                input.schema(),
+                                input_exec.schema().as_ref(),
+                                session_state,
+                            )
                         })
                         .collect::<Result<Vec<Arc<dyn PhysicalExpr>>>>()?
                 } else {
@@ -1019,8 +1036,12 @@ impl DefaultPhysicalPlanner {
                 let physical_input = children.one()?;
                 let input_dfschema = input.schema();
 
-                let runtime_expr =
-                    self.create_physical_expr(predicate, input_dfschema, session_state)?;
+                let runtime_expr = self.create_physical_expr(
+                    predicate,
+                    input_dfschema,
+                    physical_input.schema().as_ref(),
+                    session_state,
+                )?;
                 let selectivity = session_state
                     .config()
                     .options()
@@ -1046,6 +1067,7 @@ impl DefaultPhysicalPlanner {
                                 self.create_physical_expr(
                                     e,
                                     input_dfschema,
+                                    physical_input.schema().as_ref(),
                                     session_state,
                                 )
                             })
@@ -1071,6 +1093,7 @@ impl DefaultPhysicalPlanner {
                 let sort_expr = create_physical_sort_exprs(
                     expr,
                     input_dfschema,
+                    physical_input.schema().as_ref(),
                     session_state.execution_props(),
                 )?;
                 let new_sort =
@@ -1235,9 +1258,18 @@ impl DefaultPhysicalPlanner {
                 let join_on = keys
                     .iter()
                     .map(|(l, r)| {
-                        let l = create_physical_expr(l, left_df_schema, execution_props)?;
-                        let r =
-                            create_physical_expr(r, right_df_schema, execution_props)?;
+                        let l = create_physical_expr(
+                            l,
+                            left_df_schema,
+                            physical_left.schema().as_ref(),
+                            execution_props,
+                        )?;
+                        let r = create_physical_expr(
+                            r,
+                            right_df_schema,
+                            physical_left.schema().as_ref(),
+                            execution_props,
+                        )?;
                         Ok((l, r))
                     })
                     .collect::<Result<join_utils::JoinOn>>()?;
@@ -1301,6 +1333,7 @@ impl DefaultPhysicalPlanner {
                         let filter_expr = create_physical_expr(
                             expr,
                             &filter_df_schema,
+                            &filter_schema,
                             session_state.execution_props(),
                         )?;
                         let column_indices = join_utils::JoinFilter::build_column_indices(
@@ -1520,7 +1553,12 @@ impl DefaultPhysicalPlanner {
                     )
                 }
                 expr => Ok(PhysicalGroupBy::new_single(vec![tuple_err((
-                    self.create_physical_expr(expr, input_dfschema, session_state),
+                    self.create_physical_expr(
+                        expr,
+                        input_dfschema,
+                        input_schema,
+                        session_state,
+                    ),
                     physical_name(expr),
                 ))?])),
             }
@@ -1530,7 +1568,12 @@ impl DefaultPhysicalPlanner {
                     .iter()
                     .map(|e| {
                         tuple_err((
-                            self.create_physical_expr(e, input_dfschema, session_state),
+                            self.create_physical_expr(
+                                e,
+                                input_dfschema,
+                                input_schema,
+                                session_state,
+                            ),
                             physical_name(e),
                         ))
                     })
@@ -1692,8 +1735,12 @@ fn get_null_physical_expr_pair(
     input_schema: &Schema,
     session_state: &SessionState,
 ) -> Result<(Arc<dyn PhysicalExpr>, String)> {
-    let physical_expr =
-        create_physical_expr(expr, input_dfschema, session_state.execution_props())?;
+    let physical_expr = create_physical_expr(
+        expr,
+        input_dfschema,
+        input_schema,
+        session_state.execution_props(),
+    )?;
     let physical_name = physical_name(&expr.clone())?;
 
     let data_type = physical_expr.data_type(input_schema)?;
@@ -1752,10 +1799,18 @@ pub fn create_window_expr_with_name(
             window_frame,
             null_treatment,
         }) => {
-            let physical_args =
-                create_physical_exprs(args, logical_schema, execution_props)?;
-            let partition_by =
-                create_physical_exprs(partition_by, logical_schema, execution_props)?;
+            let physical_args = create_physical_exprs(
+                args,
+                logical_schema,
+                physical_schema,
+                execution_props,
+            )?;
+            let partition_by = create_physical_exprs(
+                partition_by,
+                logical_schema,
+                physical_schema,
+                execution_props,
+            )?;
             let order_by =
                 create_physical_sort_exprs(order_by, logical_schema, execution_props)?;
 
@@ -1824,12 +1879,17 @@ pub fn create_aggregate_expr_with_name_and_maybe_filter(
             order_by,
             null_treatment,
         }) => {
-            let physical_args =
-                create_physical_exprs(args, logical_input_schema, execution_props)?;
+            let physical_args = create_physical_exprs(
+                args,
+                logical_input_schema,
+                physical_input_schema,
+                execution_props,
+            )?;
             let filter = match filter {
                 Some(e) => Some(create_physical_expr(
                     e,
                     logical_input_schema,
+                    physical_input_schema,
                     execution_props,
                 )?),
                 None => None,
@@ -1921,6 +1981,7 @@ pub fn create_aggregate_expr_and_maybe_filter(
 pub fn create_physical_sort_expr(
     e: &Expr,
     input_dfschema: &DFSchema,
+    input_schema: &Schema,
     execution_props: &ExecutionProps,
 ) -> Result<PhysicalSortExpr> {
     if let Expr::Sort(expr::Sort {
@@ -1930,7 +1991,12 @@ pub fn create_physical_sort_expr(
     }) = e
     {
         Ok(PhysicalSortExpr {
-            expr: create_physical_expr(expr, input_dfschema, execution_props)?,
+            expr: create_physical_expr(
+                expr,
+                input_dfschema,
+                input_schema,
+                execution_props,
+            )?,
             options: SortOptions {
                 descending: !asc,
                 nulls_first: *nulls_first,
@@ -1945,11 +2011,14 @@ pub fn create_physical_sort_expr(
 pub fn create_physical_sort_exprs(
     exprs: &[Expr],
     input_dfschema: &DFSchema,
+    input_schema: &Schema,
     execution_props: &ExecutionProps,
 ) -> Result<LexOrdering> {
     exprs
         .iter()
-        .map(|expr| create_physical_sort_expr(expr, input_dfschema, execution_props))
+        .map(|expr| {
+            create_physical_sort_expr(expr, input_dfschema, input_schema, execution_props)
+        })
         .collect::<Result<Vec<_>>>()
 }
 
@@ -2202,7 +2271,12 @@ impl DefaultPhysicalPlanner {
                 };
 
                 tuple_err((
-                    self.create_physical_expr(e, input_schema, session_state),
+                    self.create_physical_expr(
+                        e,
+                        input_schema,
+                        input_exec.schema().as_ref(),
+                        session_state,
+                    ),
                     physical_name,
                 ))
             })

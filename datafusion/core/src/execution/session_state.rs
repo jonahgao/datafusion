@@ -42,7 +42,7 @@ use crate::physical_optimizer::optimizer::PhysicalOptimizer;
 use crate::physical_optimizer::PhysicalOptimizerRule;
 use crate::physical_planner::{DefaultPhysicalPlanner, PhysicalPlanner};
 use crate::{functions, functions_aggregate};
-use arrow_schema::{DataType, SchemaRef};
+use arrow_schema::{DataType, Schema, SchemaRef};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use datafusion_common::alias::AliasGenerator;
@@ -776,6 +776,7 @@ impl SessionState {
         &self,
         expr: Expr,
         df_schema: &DFSchema,
+        schema: &Schema,
     ) -> datafusion_common::Result<Arc<dyn PhysicalExpr>> {
         let simplifier =
             ExprSimplifier::new(SessionSimplifyProvider::new(self, df_schema));
@@ -789,7 +790,7 @@ impl SessionState {
                 .transform_up(|expr| rewrite.rewrite(expr, df_schema, config_options))?
                 .data;
         }
-        create_physical_expr(&expr, df_schema, self.execution_props())
+        create_physical_expr(&expr, df_schema, schema, self.execution_props())
     }
 
     /// Return the session ID
