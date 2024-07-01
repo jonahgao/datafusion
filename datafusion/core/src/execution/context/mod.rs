@@ -1941,6 +1941,7 @@ mod tests {
             &self,
             _expr: &Expr,
             _input_dfschema: &crate::common::DFSchema,
+            _input_schema: &Schema,
             _session_state: &SessionState,
         ) -> Result<Arc<dyn crate::physical_plan::PhysicalExpr>> {
             unimplemented!()

@@ -336,7 +336,7 @@ impl TestFull {
         // add the predicate, if requested
         if let Some(predicate) = predicate {
             let df_schema = DFSchema::try_from(schema.clone())?;
-            let predicate = ctx.create_physical_expr(predicate, &df_schema)?;
+            let predicate = ctx.create_physical_expr(predicate, &df_schema, &schema)?;
             builder = builder.with_predicate(predicate);
         }
 

@@ -147,7 +147,7 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
             Ok(format!("{left} {op} {right}"))
         }
         Expr::Case(case) => {
-            let mut name = "PHYSICAL CASE ".to_string();
+            let mut name = "CASE ".to_string();
             if let Some(e) = &case.expr {
                 let _ = write!(name, "{} ", create_physical_name(e, false)?);
             }
@@ -910,13 +910,14 @@ impl DefaultPhysicalPlanner {
                 }
 
                 let logical_schema = node.schema();
+                let phyiscal_schema = logical_schema.as_ref().into();
                 let window_expr = window_expr
                     .iter()
                     .map(|e| {
                         create_window_expr(
                             e,
                             logical_schema,
-                            input_exec.schema().as_ref(),
+                            &phyiscal_schema,
                             session_state.execution_props(),
                         )
                     })
@@ -1268,7 +1269,7 @@ impl DefaultPhysicalPlanner {
                         let r = create_physical_expr(
                             r,
                             right_df_schema,
-                            physical_left.schema().as_ref(),
+                            physical_right.schema().as_ref(),
                             execution_props,
                         )?;
                         Ok((l, r))
@@ -1994,7 +1995,6 @@ pub fn create_aggregate_expr_and_maybe_filter(
     // unpack (nested) aliased logical expressions, e.g. "sum(col) as total"
     let (name, e) = match e {
         Expr::Alias(Alias { expr, name, .. }) => (name.clone(), expr.as_ref()),
-        Expr::AggregateFunction(_) => (e.display_name().unwrap_or(physical_name(e)?), e),
         _ => (physical_name(e)?, e),
     };
 
@@ -2272,34 +2272,6 @@ impl DefaultPhysicalPlanner {
         let physical_exprs = expr
             .iter()
             .map(|e| {
-                // For projections, SQL planner and logical plan builder may convert user
-                // provided expressions into logical Column expressions if their results
-                // are already provided from the input plans. Because we work with
-                // qualified columns in logical plane, derived columns involve operators or
-                // functions will contain qualifiers as well. This will result in logical
-                // columns with names like `SUM(t1.c1)`, `t1.c1 + t1.c2`, etc.
-                //
-                // If we run these logical columns through physical_name function, we will
-                // get physical names with column qualifiers, which violates DataFusion's
-                // field name semantics. To account for this, we need to derive the
-                // physical name from physical input instead.
-                //
-                // This depends on the invariant that logical schema field index MUST match
-                // with physical schema field index.
-                let physical_name = if let Expr::Column(col) = e {
-                    match input_schema.index_of_column(col) {
-                        Ok(idx) => {
-                            // index physical field using logical field index
-                            Ok(input_exec.schema().field(idx).name().to_string())
-                        }
-                        // logical column is not a derived column, safe to pass along to
-                        // physical_name
-                        Err(_) => physical_name(e),
-                    }
-                } else {
-                    physical_name(e)
-                };
-
                 tuple_err((
                     self.create_physical_expr(
                         e,
@@ -2307,7 +2279,7 @@ impl DefaultPhysicalPlanner {
                         input_exec.schema().as_ref(),
                         session_state,
                     ),
-                    physical_name,
+                    physical_name(e),
                 ))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -2456,6 +2428,7 @@ mod tests {
         let expr = planner.create_physical_expr(
             &col("a").not(),
             &dfschema,
+            &schema,
             &make_session_state(),
         )?;
         let expected = expressions::not(expressions::col("a", &schema)?)?;

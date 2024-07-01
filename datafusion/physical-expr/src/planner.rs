@@ -117,6 +117,8 @@ pub fn create_physical_expr(
         )?),
         Expr::Column(c) => {
             let idx = input_dfschema.index_of_column(c)?;
+            // The physical input schema may have different field names than the logical schema, so we need
+            // to look up the field name in the physical schema and use that to create the physical column.
             let field = input_schema.fields().get(idx).ok_or_else(|| {
                 plan_datafusion_err!(
                     "Column index out of bounds: {} (schema has {} fields)",
@@ -478,7 +480,7 @@ mod tests {
 
         let schema = Schema::new(vec![Field::new("letter", DataType::Utf8, false)]);
         let df_schema = DFSchema::try_from_qualified_schema("data", &schema)?;
-        let p = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())?;
+        let p = create_physical_expr(&expr, &df_schema, &schema, &ExecutionProps::new())?;
 
         let batch = RecordBatch::try_new(
             Arc::new(schema),
