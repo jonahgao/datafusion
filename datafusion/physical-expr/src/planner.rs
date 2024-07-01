@@ -100,30 +100,30 @@ use datafusion_expr::{binary_expr, Between, BinaryExpr, Expr, Like, Operator, Tr
 /// # Arguments
 ///
 /// * `e` - The logical expression
-/// * `input_dfschema` - The DataFusion schema for the input, used to resolve `Column` references
-///                      to qualified or unqualified fields by name.
+/// * `logical_input_schema` - The schema of the input to the logical plan that this expression belongs to.
+/// * `phyiscal_input_schema` - The schema of the input to the physical plan that this expression belongs to.
 pub fn create_physical_expr(
     e: &Expr,
-    input_dfschema: &DFSchema,
-    input_schema: &Schema,
+    logical_input_schema: &DFSchema,
+    physical_input_schema: &Schema,
     execution_props: &ExecutionProps,
 ) -> Result<Arc<dyn PhysicalExpr>> {
     match e {
         Expr::Alias(Alias { expr, .. }) => Ok(create_physical_expr(
             expr,
-            input_dfschema,
-            input_schema,
+            logical_input_schema,
+            physical_input_schema,
             execution_props,
         )?),
         Expr::Column(c) => {
-            let idx = input_dfschema.index_of_column(c)?;
+            let idx = logical_input_schema.index_of_column(c)?;
             // The physical input schema may have different field names than the logical schema, so we need
             // to look up the field name in the physical schema and use that to create the physical column.
-            let field = input_schema.fields().get(idx).ok_or_else(|| {
+            let field = physical_input_schema.fields().get(idx).ok_or_else(|| {
                 plan_datafusion_err!(
                     "Column index out of bounds: {} (schema has {} fields)",
                     idx,
-                    input_schema.fields().len()
+                    physical_input_schema.fields().len()
                 )
             })?;
             Ok(Arc::new(Column::new(field.name(), idx)))
@@ -156,8 +156,8 @@ pub fn create_physical_expr(
             );
             create_physical_expr(
                 &binary_op,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )
         }
@@ -169,8 +169,8 @@ pub fn create_physical_expr(
             );
             create_physical_expr(
                 &binary_op,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )
         }
@@ -182,8 +182,8 @@ pub fn create_physical_expr(
             );
             create_physical_expr(
                 &binary_op,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )
         }
@@ -195,8 +195,8 @@ pub fn create_physical_expr(
             );
             create_physical_expr(
                 &binary_op,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )
         }
@@ -208,8 +208,8 @@ pub fn create_physical_expr(
             );
             create_physical_expr(
                 &binary_op,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )
         }
@@ -221,8 +221,8 @@ pub fn create_physical_expr(
             );
             create_physical_expr(
                 &binary_op,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )
         }
@@ -230,14 +230,14 @@ pub fn create_physical_expr(
             // Create physical expressions for left and right operands
             let lhs = create_physical_expr(
                 left,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
             let rhs = create_physical_expr(
                 right,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
             // Note that the logical planner is responsible
@@ -247,7 +247,7 @@ pub fn create_physical_expr(
             //
             // There should be no coercion during physical
             // planning.
-            binary(lhs, op.clone(), rhs, input_schema)
+            binary(lhs, op.clone(), rhs, physical_input_schema)
         }
         Expr::Like(Like {
             negated,
@@ -261,14 +261,14 @@ pub fn create_physical_expr(
             }
             let physical_expr = create_physical_expr(
                 expr,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
             let physical_pattern = create_physical_expr(
                 pattern,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
             like(
@@ -276,15 +276,15 @@ pub fn create_physical_expr(
                 *case_insensitive,
                 physical_expr,
                 physical_pattern,
-                input_schema,
+                physical_input_schema,
             )
         }
         Expr::Case(case) => {
             let expr: Option<Arc<dyn PhysicalExpr>> = if let Some(e) = &case.expr {
                 Some(create_physical_expr(
                     e.as_ref(),
-                    input_dfschema,
-                    input_schema,
+                    logical_input_schema,
+                    physical_input_schema,
                     execution_props,
                 )?)
             } else {
@@ -297,14 +297,14 @@ pub fn create_physical_expr(
                 .unzip();
             let when_expr = create_physical_exprs(
                 when_expr,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
             let then_expr = create_physical_exprs(
                 then_expr,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
             let when_then_expr: Vec<(Arc<dyn PhysicalExpr>, Arc<dyn PhysicalExpr>)> =
@@ -317,8 +317,8 @@ pub fn create_physical_expr(
                 if let Some(e) = &case.else_expr {
                     Some(create_physical_expr(
                         e.as_ref(),
-                        input_dfschema,
-                        input_schema,
+                        logical_input_schema,
+                        physical_input_schema,
                         execution_props,
                     )?)
                 } else {
@@ -327,51 +327,66 @@ pub fn create_physical_expr(
             Ok(expressions::case(expr, when_then_expr, else_expr)?)
         }
         Expr::Cast(Cast { expr, data_type }) => expressions::cast(
-            create_physical_expr(expr, input_dfschema, input_schema, execution_props)?,
-            input_schema,
+            create_physical_expr(
+                expr,
+                logical_input_schema,
+                physical_input_schema,
+                execution_props,
+            )?,
+            physical_input_schema,
             data_type.clone(),
         ),
         Expr::TryCast(TryCast { expr, data_type }) => expressions::try_cast(
-            create_physical_expr(expr, input_dfschema, input_schema, execution_props)?,
-            input_schema,
+            create_physical_expr(
+                expr,
+                logical_input_schema,
+                physical_input_schema,
+                execution_props,
+            )?,
+            physical_input_schema,
             data_type.clone(),
         ),
         Expr::Not(expr) => expressions::not(create_physical_expr(
             expr,
-            input_dfschema,
-            input_schema,
+            logical_input_schema,
+            physical_input_schema,
             execution_props,
         )?),
         Expr::Negative(expr) => expressions::negative(
-            create_physical_expr(expr, input_dfschema, input_schema, execution_props)?,
-            input_schema,
+            create_physical_expr(
+                expr,
+                logical_input_schema,
+                physical_input_schema,
+                execution_props,
+            )?,
+            physical_input_schema,
         ),
         Expr::IsNull(expr) => expressions::is_null(create_physical_expr(
             expr,
-            input_dfschema,
-            input_schema,
+            logical_input_schema,
+            physical_input_schema,
             execution_props,
         )?),
         Expr::IsNotNull(expr) => expressions::is_not_null(create_physical_expr(
             expr,
-            input_dfschema,
-            input_schema,
+            logical_input_schema,
+            physical_input_schema,
             execution_props,
         )?),
         Expr::ScalarFunction(ScalarFunction { func, args }) => {
             let physical_args = create_physical_exprs(
                 args,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
 
             scalar_function::create_physical_expr(
                 func.clone().as_ref(),
                 &physical_args,
-                input_schema,
+                physical_input_schema,
                 args,
-                input_dfschema,
+                logical_input_schema,
             )
         }
         Expr::Between(Between {
@@ -382,25 +397,39 @@ pub fn create_physical_expr(
         }) => {
             let value_expr = create_physical_expr(
                 expr,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
-            let low_expr =
-                create_physical_expr(low, input_dfschema, input_schema, execution_props)?;
+            let low_expr = create_physical_expr(
+                low,
+                logical_input_schema,
+                physical_input_schema,
+                execution_props,
+            )?;
             let high_expr = create_physical_expr(
                 high,
-                input_dfschema,
-                input_schema,
+                logical_input_schema,
+                physical_input_schema,
                 execution_props,
             )?;
 
             // rewrite the between into the two binary operators
             let binary_expr = binary(
-                binary(value_expr.clone(), Operator::GtEq, low_expr, input_schema)?,
+                binary(
+                    value_expr.clone(),
+                    Operator::GtEq,
+                    low_expr,
+                    physical_input_schema,
+                )?,
                 Operator::And,
-                binary(value_expr.clone(), Operator::LtEq, high_expr, input_schema)?,
-                input_schema,
+                binary(
+                    value_expr.clone(),
+                    Operator::LtEq,
+                    high_expr,
+                    physical_input_schema,
+                )?,
+                physical_input_schema,
             );
 
             if *negated {
@@ -420,18 +449,23 @@ pub fn create_physical_expr(
             _ => {
                 let value_expr = create_physical_expr(
                     expr,
-                    input_dfschema,
-                    input_schema,
+                    logical_input_schema,
+                    physical_input_schema,
                     execution_props,
                 )?;
 
                 let list_exprs = create_physical_exprs(
                     list,
-                    input_dfschema,
-                    input_schema,
+                    logical_input_schema,
+                    physical_input_schema,
                     execution_props,
                 )?;
-                expressions::in_list(value_expr, list_exprs, negated, input_schema)
+                expressions::in_list(
+                    value_expr,
+                    list_exprs,
+                    negated,
+                    physical_input_schema,
+                )
             }
         },
         other => {
