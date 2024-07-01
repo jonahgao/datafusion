@@ -123,7 +123,11 @@ fn evaluate_demo() -> Result<()> {
 
     // First, you make a "physical expression" from the logical `Expr`
     let df_schema = DFSchema::try_from(batch.schema())?;
-    let physical_expr = SessionContext::new().create_physical_expr(expr, &df_schema)?;
+    let physical_expr = SessionContext::new().create_physical_expr(
+        expr,
+        &df_schema,
+        batch.schema().as_ref(),
+    )?;
 
     // Now, you can evaluate the expression against the RecordBatch
     let result = physical_expr.evaluate(&batch)?;
@@ -254,7 +258,8 @@ fn range_analysis_demo() -> Result<()> {
 
     // Now, we invoke the analysis code to perform the range analysis
     let df_schema = DFSchema::try_from(schema)?;
-    let physical_expr = SessionContext::new().create_physical_expr(expr, &df_schema)?;
+    let physical_expr =
+        SessionContext::new().create_physical_expr(expr, &df_schema, &schema)?;
     let analysis_result = analyze(
         &physical_expr,
         AnalysisContext::new(boundaries),

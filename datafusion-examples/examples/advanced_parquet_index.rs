@@ -278,7 +278,9 @@ impl IndexTableProvider {
 
         let predicate = conjunction(filters.to_vec());
         let predicate = predicate
-            .map(|predicate| state.create_physical_expr(predicate, &df_schema))
+            .map(|predicate| {
+                state.create_physical_expr(predicate, &df_schema, self.schema().as_ref())
+            })
             .transpose()?
             // if there are no filters, use a literal true to have a predicate
             // that always evaluates to true we can pass to the index
