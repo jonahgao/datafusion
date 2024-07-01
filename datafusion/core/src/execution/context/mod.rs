@@ -600,8 +600,11 @@ impl SessionContext {
         &self,
         expr: Expr,
         df_schema: &DFSchema,
+        schema: &Schema,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        self.state.read().create_physical_expr(expr, df_schema)
+        self.state
+            .read()
+            .create_physical_expr(expr, df_schema, schema)
     }
 
     // return an empty dataframe
@@ -1938,6 +1941,7 @@ mod tests {
             &self,
             _expr: &Expr,
             _input_dfschema: &crate::common::DFSchema,
+            _input_schema: &Schema,
             _session_state: &SessionState,
         ) -> Result<Arc<dyn crate::physical_plan::PhysicalExpr>> {
             unimplemented!()

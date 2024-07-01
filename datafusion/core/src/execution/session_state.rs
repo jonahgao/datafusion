@@ -42,7 +42,7 @@ use crate::physical_optimizer::optimizer::PhysicalOptimizer;
 use crate::physical_optimizer::PhysicalOptimizerRule;
 use crate::physical_planner::{DefaultPhysicalPlanner, PhysicalPlanner};
 use crate::{functions, functions_aggregate};
-use arrow_schema::{DataType, SchemaRef};
+use arrow_schema::{DataType, Schema, SchemaRef};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use datafusion_common::alias::AliasGenerator;
@@ -775,21 +775,29 @@ impl SessionState {
     pub fn create_physical_expr(
         &self,
         expr: Expr,
-        df_schema: &DFSchema,
+        logical_schema: &DFSchema,
+        physical_schema: &Schema,
     ) -> datafusion_common::Result<Arc<dyn PhysicalExpr>> {
         let simplifier =
-            ExprSimplifier::new(SessionSimplifyProvider::new(self, df_schema));
+            ExprSimplifier::new(SessionSimplifyProvider::new(self, logical_schema));
         // apply type coercion here to ensure types match
-        let mut expr = simplifier.coerce(expr, df_schema)?;
+        let mut expr = simplifier.coerce(expr, logical_schema)?;
 
         // rewrite Exprs to functions if necessary
         let config_options = self.config_options();
         for rewrite in self.analyzer.function_rewrites() {
             expr = expr
-                .transform_up(|expr| rewrite.rewrite(expr, df_schema, config_options))?
+                .transform_up(|expr| {
+                    rewrite.rewrite(expr, logical_schema, config_options)
+                })?
                 .data;
         }
-        create_physical_expr(&expr, df_schema, self.execution_props())
+        create_physical_expr(
+            &expr,
+            logical_schema,
+            physical_schema,
+            self.execution_props(),
+        )
     }
 
     /// Return the session ID

@@ -1127,6 +1127,7 @@ mod tests {
                     crate::physical_planner::create_physical_sort_expr(
                         &expr,
                         &DFSchema::try_from(table_schema.as_ref().clone())?,
+                        &table_schema,
                         &ExecutionProps::default(),
                     )
                 })

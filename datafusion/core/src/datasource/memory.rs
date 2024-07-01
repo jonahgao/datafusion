@@ -234,6 +234,7 @@ impl TableProvider for MemTable {
                     create_physical_sort_exprs(
                         sort_exprs,
                         &df_schema,
+                        self.schema().as_ref(),
                         state.execution_props(),
                     )
                 })

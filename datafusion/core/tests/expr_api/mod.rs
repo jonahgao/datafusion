@@ -350,7 +350,7 @@ fn evaluate_expr_test(expr: Expr, expected_lines: Vec<&str>) {
     let batch = test_batch();
     let df_schema = DFSchema::try_from(batch.schema()).unwrap();
     let physical_expr = SessionContext::new()
-        .create_physical_expr(expr, &df_schema)
+        .create_physical_expr(expr, &df_schema, &batch.schema())
         .unwrap();
 
     let result = physical_expr.evaluate(&batch).unwrap();
