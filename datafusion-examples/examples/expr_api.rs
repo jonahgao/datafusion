@@ -257,7 +257,7 @@ fn range_analysis_demo() -> Result<()> {
     let boundaries = ExprBoundaries::try_new_unbounded(&schema)?;
 
     // Now, we invoke the analysis code to perform the range analysis
-    let df_schema = DFSchema::try_from(schema)?;
+    let df_schema = DFSchema::try_from(schema.clone())?;
     let physical_expr =
         SessionContext::new().create_physical_expr(expr, &df_schema, &schema)?;
     let analysis_result = analyze(
