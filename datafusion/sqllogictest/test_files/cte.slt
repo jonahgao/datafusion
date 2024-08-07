@@ -154,7 +154,7 @@ logical_plan
 03)----RecursiveQuery: is_distinct=false
 04)------Projection: balance.time, balance.name, balance.account_balance
 05)--------TableScan: balance
-06)------Projection: balances.time + Int64(1) AS time, balances.name, balances.account_balance + Int64(10) AS account_balance
+06)------Projection: balances.time + Int64(1) AS time, balances.name AS name, balances.account_balance + Int64(10) AS account_balance
 07)--------Filter: balances.time < Int64(10)
 08)----------TableScan: balances
 physical_plan

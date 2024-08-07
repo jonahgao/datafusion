@@ -269,9 +269,9 @@ mod tests {
 
         let expected = "Union\
         \n  TableScan: table\
-        \n  Projection: table.id AS id, table.key, table.value\
+        \n  Projection: table.id, table.key, table.value\
         \n    TableScan: table\
-        \n  Projection: table.id AS id, table.key, table.value\
+        \n  Projection: table.id, table.key, table.value\
         \n    TableScan: table";
         assert_optimized_plan_equal(plan, expected)
     }
@@ -299,9 +299,9 @@ mod tests {
         let expected = "Distinct:\
         \n  Union\
         \n    TableScan: table\
-        \n    Projection: table.id AS id, table.key, table.value\
+        \n    Projection: table.id, table.key, table.value\
         \n      TableScan: table\
-        \n    Projection: table.id AS id, table.key, table.value\
+        \n    Projection: table.id, table.key, table.value\
         \n      TableScan: table";
         assert_optimized_plan_equal(plan, expected)
     }

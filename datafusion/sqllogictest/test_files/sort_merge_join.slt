@@ -330,7 +330,7 @@ t1 as (
 11 12
 11 13
 
-query II
+query ?I
 select * from (
 with
 t1 as (

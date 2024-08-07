@@ -273,7 +273,10 @@ pub(crate) fn convert_schema_to_types(columns: &Fields) -> Vec<DFColumnType> {
             | DataType::Time32(_)
             | DataType::Time64(_) => DFColumnType::DateTime,
             DataType::Timestamp(_, _) => DFColumnType::Timestamp,
-            _ => DFColumnType::Another,
+            _ => {
+                println!("Unknown data type: {:?}", data_type);
+                DFColumnType::Another
+            }
         })
         .collect()
 }

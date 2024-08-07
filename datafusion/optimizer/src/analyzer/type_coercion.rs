@@ -17,9 +17,12 @@
 
 //! Optimizer rule for type validation and coercion
 
+use datafusion_expr::expr_rewriter::coerce_plan_expr_for_schema;
+use itertools::izip;
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow::datatypes::{DataType, IntervalUnit};
+use arrow::datatypes::{DataType, Field, IntervalUnit};
 
 use datafusion_common::config::ConfigOptions;
 use datafusion_common::tree_node::{Transformed, TreeNode, TreeNodeRewriter};
@@ -47,8 +50,8 @@ use datafusion_expr::type_coercion::{is_datetime, is_utf8_or_large_utf8};
 use datafusion_expr::utils::merge_schema;
 use datafusion_expr::{
     is_false, is_not_false, is_not_true, is_not_unknown, is_true, is_unknown, not,
-    AggregateUDF, Expr, ExprFunctionExt, ExprSchemable, LogicalPlan, Operator, ScalarUDF,
-    WindowFrame, WindowFrameBound, WindowFrameUnits,
+    AggregateUDF, Expr, ExprFunctionExt, ExprSchemable, Join, LogicalPlan, Operator,
+    ScalarUDF, Union, WindowFrame, WindowFrameBound, WindowFrameUnits,
 };
 
 use crate::analyzer::AnalyzerRule;
@@ -120,8 +123,8 @@ fn analyze_internal(
         expr.rewrite(&mut expr_rewrite)?
             .map_data(|expr| original_name.restore(expr))
     })?
-    // coerce join expressions specially
-    .map_data(|plan| expr_rewrite.coerce_joins(plan))?
+    // some plans need to be rewritten after the expressions have been rewritten
+    .map_data(|plan| expr_rewrite.coerce_plan(plan))?
     // recompute the schema after the expressions have been rewritten as the types may have changed
     .map_data(|plan| plan.recompute_schema())
 }
@@ -135,6 +138,14 @@ impl<'a> TypeCoercionRewriter<'a> {
         Self { schema }
     }
 
+    fn coerce_plan(&mut self, plan: LogicalPlan) -> Result<LogicalPlan> {
+        match plan {
+            LogicalPlan::Join(join) => self.coerce_join(join),
+            LogicalPlan::Union(union) => coerce_union(union),
+            _ => Ok(plan),
+        }
+    }
+
     /// Coerce join equality expressions and join filter
     ///
     /// Joins must be treated specially as their equality expressions are stored
@@ -143,11 +154,7 @@ impl<'a> TypeCoercionRewriter<'a> {
     ///
     /// For example, on_exprs like `t1.a = t2.b AND t1.x = t2.y` will be stored
     /// as a list of `(t1.a, t2.b), (t1.x, t2.y)`
-    fn coerce_joins(&mut self, plan: LogicalPlan) -> Result<LogicalPlan> {
-        let LogicalPlan::Join(mut join) = plan else {
-            return Ok(plan);
-        };
-
+    fn coerce_join(&mut self, mut join: Join) -> Result<LogicalPlan> {
         join.on = join
             .on
             .into_iter()
@@ -772,6 +779,81 @@ fn coerce_case_expression(case: Case, schema: &DFSchema) -> Result<Case> {
         .map(Box::new);
 
     Ok(Case::new(case_expr, when_then, else_expr))
+}
+
+/// Coerce the schema of the inputs to a common schema
+fn coerce_union_schema(inputs: Vec<Arc<LogicalPlan>>) -> Result<DFSchema> {
+    let base_schema = inputs[0].schema();
+    let mut union_datatypes = base_schema
+        .fields()
+        .iter()
+        .map(|f| f.data_type().clone())
+        .collect::<Vec<_>>();
+    let mut union_nullabilities = base_schema
+        .fields()
+        .iter()
+        .map(|f| f.is_nullable())
+        .collect::<Vec<_>>();
+
+    for (i, plan) in inputs.iter().enumerate().skip(1) {
+        let plan_schema = plan.schema();
+        if plan_schema.fields().len() != base_schema.fields().len() {
+            return plan_err!(
+                "Union schemas have different number of fields,
+                query 1 is {}, query {} is {}",
+                base_schema.fields().len(),
+                i + 1,
+                plan_schema.fields().len()
+            );
+        }
+        // coerce data type and nullablity for each field
+        for (union_datatype, union_nullable, plan_field) in izip!(
+            union_datatypes.iter_mut(),
+            union_nullabilities.iter_mut(),
+            plan_schema.fields()
+        ) {
+            let coerced_type =
+                comparison_coercion(union_datatype, plan_field.data_type()).ok_or_else(
+                    || {
+                        plan_datafusion_err!(
+                    "UNION Column {} (type: {}) is not compatible with other type: {}",
+                    plan_field.name(),
+                    plan_field.data_type(),
+                    union_datatype
+                )
+                    },
+                )?;
+            *union_datatype = coerced_type;
+            *union_nullable = *union_nullable || plan_field.is_nullable();
+        }
+    }
+    println!("union_datatypes: {:?}", union_datatypes);
+
+    let union_qualified_fields = izip!(
+        base_schema.iter(),
+        union_datatypes.into_iter(),
+        union_nullabilities
+    )
+    .map(|((qualifier, field), datatype, nullable)| {
+        let field = Arc::new(Field::new(field.name().clone(), datatype, nullable));
+        (qualifier.cloned(), field)
+    })
+    .collect::<Vec<_>>();
+    DFSchema::new_with_metadata(union_qualified_fields, HashMap::new())
+}
+
+/// Make sure that all inputs have the same schema
+fn coerce_union(union_plan: Union) -> Result<LogicalPlan> {
+    let union_schema = coerce_union_schema(union_plan.inputs.clone())?;
+    let new_inputs = union_plan
+        .inputs
+        .iter()
+        .map(|plan| coerce_plan_expr_for_schema(&plan, &union_schema).map(Arc::new))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(LogicalPlan::Union(Union {
+        inputs: new_inputs,
+        schema: Arc::new(union_schema),
+    }))
 }
 
 #[cfg(test)]

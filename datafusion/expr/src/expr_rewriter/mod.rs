@@ -242,17 +242,27 @@ fn coerce_exprs_for_schema(
         .into_iter()
         .enumerate()
         .map(|(idx, expr)| {
-            let new_type = dst_schema.field(idx).data_type();
-            if new_type != &expr.get_type(src_schema)? {
-                match expr {
-                    Expr::Alias(Alias { expr, name, .. }) => {
-                        Ok(expr.cast_to(new_type, src_schema)?.alias(name))
-                    }
-                    _ => expr.cast_to(new_type, src_schema),
+            let (dst_qualifier, dst_field) = dst_schema.qualified_field(idx);
+            let mut new_expr =
+                expr.unalias().cast_to(dst_field.data_type(), src_schema)?;
+            // Make sure the new expression has the same qualified name as the dst_field
+            let need_alias = match &new_expr {
+                Expr::Column(c) => {
+                    c.relation.as_ref() != dst_qualifier || &c.name != dst_field.name()
                 }
-            } else {
-                Ok(expr)
+                Expr::Alias(Alias { relation, name, .. }) => {
+                    relation.as_ref() != dst_qualifier || name != dst_field.name()
+                }
+                _ => {
+                    dst_qualifier.is_some()
+                        || &new_expr.display_name()? != dst_field.name()
+                }
+            };
+            if need_alias {
+                new_expr =
+                    new_expr.alias_qualified(dst_qualifier.cloned(), dst_field.name());
             }
+            Ok(new_expr)
         })
         .collect::<Result<_>>()
 }

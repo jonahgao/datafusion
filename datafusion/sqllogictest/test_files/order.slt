@@ -766,12 +766,13 @@ logical_plan
 06)----------SubqueryAlias: m0
 07)------------Projection: column1 AS t
 08)--------------Values: (Int64(0)), (Int64(1)), (Int64(2))
-09)----SubqueryAlias: v
-10)------Projection: Int64(1) AS m, m1.t
-11)--------Aggregate: groupBy=[[m1.t]], aggr=[[]]
-12)----------SubqueryAlias: m1
-13)------------Projection: column1 AS t
-14)--------------Values: (Int64(0)), (Int64(1))
+09)----Projection: v.m AS m, v.t AS t
+10)------SubqueryAlias: v
+11)--------Projection: Int64(1) AS m, m1.t
+12)----------Aggregate: groupBy=[[m1.t]], aggr=[[]]
+13)------------SubqueryAlias: m1
+14)--------------Projection: column1 AS t
+15)----------------Values: (Int64(0)), (Int64(1))
 physical_plan
 01)SortPreservingMergeExec: [m@0 ASC NULLS LAST,t@1 ASC NULLS LAST]
 02)--SortExec: expr=[m@0 ASC NULLS LAST,t@1 ASC NULLS LAST], preserve_partitioning=[true]
