@@ -2468,3 +2468,45 @@ async fn boolean_dictionary_as_filter() {
 
     assert_batches_eq!(expected, &result_df.collect().await.unwrap());
 }
+
+#[cfg(test)]
+mod test_join_plan_bug2 {
+    use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+    use datafusion::datasource::empty::EmptyTable;
+    use datafusion::prelude::SessionContext;
+    use datafusion_physical_plan::displayable;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn count_distinct_error() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("colA", DataType::UInt64, true),
+            Field::new("colB", DataType::UInt64, true),
+        ])) as SchemaRef;
+
+        let empty_table = EmptyTable::new(schema);
+
+        // Create context and register table
+        let ctx = SessionContext::new();
+        ctx.register_table("tbl", Arc::new(empty_table)).unwrap();
+
+        let sql1 = r#"
+SELECT *
+FROM "tbl"
+INNER JOIN (SELECT "colB", count(DISTINCT "colA") as "colC" FROM "tbl" GROUP BY "colB") AS "q1"
+USING("colB")
+    "#;
+
+        let logical_plan = ctx.state().create_logical_plan(sql1).await.unwrap();
+        let physical_plan = ctx
+            .state()
+            .create_physical_plan(&logical_plan)
+            .await
+            .unwrap();
+
+        println!(
+            "{}",
+            displayable(physical_plan.as_ref()).indent(true).to_string()
+        );
+    }
+}
