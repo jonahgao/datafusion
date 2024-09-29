@@ -2950,9 +2950,17 @@ impl Aggregate {
         group_expr: Vec<Expr>,
         aggr_expr: Vec<Expr>,
     ) -> Result<Self> {
-        let group_expr = enumerate_grouping_sets(group_expr)?;
+        let mut group_expr = enumerate_grouping_sets(group_expr)?;
 
         let is_grouping_set = matches!(group_expr.as_slice(), [Expr::GroupingSet(_)]);
+        // Deduplicate group expressions.
+        if !is_grouping_set {
+            group_expr = group_expr
+                .into_iter()
+                .collect::<IndexSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+        }
 
         let grouping_expr: Vec<&Expr> = grouping_set_to_exprlist(group_expr.as_slice())?;
 
