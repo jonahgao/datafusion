@@ -515,6 +515,9 @@ impl LogicalPlan {
                 .chain(select_expr.iter())
                 .chain(sort_expr.iter().flatten().map(|sort| &sort.expr))
                 .apply_until_stop(f),
+            LogicalPlan::Limit(Limit { skip, fetch, .. }) => {
+                skip.iter().chain(fetch.iter()).apply_until_stop(f)
+            }
             // plans without expressions
             LogicalPlan::EmptyRelation(_)
             | LogicalPlan::RecursiveQuery(_)

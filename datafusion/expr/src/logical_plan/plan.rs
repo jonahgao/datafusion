@@ -980,11 +980,20 @@ impl LogicalPlan {
                     .map(LogicalPlan::SubqueryAlias)
             }
             LogicalPlan::Limit(Limit { skip, fetch, .. }) => {
-                self.assert_no_expressions(expr)?;
+                let old_expr_len = skip.iter().chain(fetch.iter()).count();
+                if old_expr_len != expr.len() {
+                    return internal_err!(
+                        "Invalid number of new Limit expressions: expected {}, got {}",
+                        old_expr_len,
+                        expr.len()
+                    );
+                }
+                let new_skip = skip.as_ref().and(expr.pop());
+                let new_fetch = fetch.as_ref().and(expr.pop());
                 let input = self.only_input(inputs)?;
                 Ok(LogicalPlan::Limit(Limit {
-                    skip: *skip,
-                    fetch: *fetch,
+                    skip: new_skip,
+                    fetch: new_fetch,
                     input: Arc::new(input),
                 }))
             }
@@ -1932,8 +1941,8 @@ impl LogicalPlan {
                         write!(
                             f,
                             "Limit: skip={}, fetch={}",
-                            skip,
-                            fetch.map_or_else(|| "None".to_string(), |x| x.to_string())
+                            skip.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string()),
+                            fetch.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string())
                         )
                     }
                     LogicalPlan::Subquery(Subquery { .. }) => {
@@ -2793,10 +2802,10 @@ impl PartialOrd for Extension {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct Limit {
     /// Number of rows to skip before fetch
-    pub skip: usize,
+    pub skip: Option<Expr>,
     /// Maximum number of rows to fetch,
     /// None means fetching all rows
-    pub fetch: Option<usize>,
+    pub fetch: Option<Expr>,
     /// The logical plan
     pub input: Arc<LogicalPlan>,
 }

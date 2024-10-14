@@ -431,7 +431,7 @@ impl LogicalPlanBuilder {
     ///
     /// `fetch` - Maximum number of rows to fetch, after skipping `skip` rows,
     ///          if specified.
-    pub fn limit(self, skip: usize, fetch: Option<usize>) -> Result<Self> {
+    pub fn limit(self, skip: Option<Expr>, fetch: Option<Expr>) -> Result<Self> {
         Ok(Self::new(LogicalPlan::Limit(Limit {
             skip,
             fetch,
