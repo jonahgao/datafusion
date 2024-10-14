@@ -85,34 +85,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             return Ok(input);
         }
 
-        let skip = match skip {
-            Some(skip_expr) => {
-                let expr = self.sql_to_expr(
-                    skip_expr.value,
-                    input.schema(),
-                    &mut PlannerContext::new(),
-                )?;
-                let n = get_constant_result(&expr, "OFFSET")?;
-                convert_usize_with_check(n, "OFFSET")
-            }
-            _ => Ok(0),
-        }?;
-
-        let fetch = match fetch {
-            Some(limit_expr)
-                if limit_expr != sqlparser::ast::Expr::Value(Value::Null) =>
-            {
-                let expr = self.sql_to_expr(
-                    limit_expr,
-                    input.schema(),
-                    &mut PlannerContext::new(),
-                )?;
-                let n = get_constant_result(&expr, "LIMIT")?;
-                Some(convert_usize_with_check(n, "LIMIT")?)
-            }
-            _ => None,
-        };
-
+        let skip = skip
+            .map(|o| {
+                self.sql_to_expr(o.value, input.schema(), &mut PlannerContext::new())
+            })
+            .transpose()?;
+        let fetch = fetch
+            .map(|e| self.sql_to_expr(e, input.schema(), &mut PlannerContext::new()))
+            .transpose()?;
         LogicalPlanBuilder::from(input).limit(skip, fetch)?.build()
     }
 
@@ -191,15 +171,6 @@ fn get_constant_result(expr: &Expr, arg_name: &str) -> Result<i64> {
             Ok(res)
         }
         _ => plan_err!("Unexpected expression in {arg_name} clause"),
-    }
-}
-
-/// Converts an `i64` to `usize`, performing a boundary check.
-fn convert_usize_with_check(n: i64, arg_name: &str) -> Result<usize> {
-    if n < 0 {
-        plan_err!("{arg_name} must be >= 0, '{n}' was provided.")
-    } else {
-        Ok(n as usize)
     }
 }
 

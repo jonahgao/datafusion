@@ -49,7 +49,8 @@ use datafusion_common::tree_node::{Transformed, TreeNode, TreeNodeRecursion};
 use datafusion_common::{
     aggregate_functional_dependencies, internal_err, plan_err, Column, Constraints,
     DFSchema, DFSchemaRef, DataFusionError, Dependency, FunctionalDependence,
-    FunctionalDependencies, ParamValues, Result, TableReference, UnnestOptions,
+    FunctionalDependencies, ParamValues, Result, ScalarValue, TableReference,
+    UnnestOptions,
 };
 use indexmap::IndexSet;
 
@@ -1368,7 +1369,12 @@ impl LogicalPlan {
             LogicalPlan::RecursiveQuery(_) => None,
             LogicalPlan::Subquery(_) => None,
             LogicalPlan::SubqueryAlias(SubqueryAlias { input, .. }) => input.max_rows(),
-            LogicalPlan::Limit(Limit { fetch, .. }) => *fetch,
+            LogicalPlan::Limit(Limit { fetch, .. }) => match fetch {
+                Some(Expr::Literal(ScalarValue::Int64(Some(s)))) if *s >= 0 => {
+                    Some(*s as usize)
+                }
+                _ => None,
+            },
             LogicalPlan::Distinct(
                 Distinct::All(input) | Distinct::On(DistinctOn { input, .. }),
             ) => input.max_rows(),
