@@ -37,8 +37,8 @@ pub use dml::{DmlStatement, WriteOp};
 pub use plan::{
     projection_schema, Aggregate, Analyze, ColumnUnnestList, ColumnUnnestType, CrossJoin,
     DescribeTable, Distinct, DistinctOn, EmptyRelation, Explain, Extension, Filter, Join,
-    JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning, PlanType, Prepare,
-    Projection, RecursiveQuery, Repartition, Sort, StringifiedPlan, Subquery,
+    JoinConstraint, JoinType, Limit, LiteralFetch, LogicalPlan, Partitioning, PlanType,
+    Prepare, Projection, RecursiveQuery, Repartition, Sort, StringifiedPlan, Subquery,
     SubqueryAlias, TableScan, ToStringifiedPlan, Union, Unnest, Values, Window,
 };
 pub use statement::{

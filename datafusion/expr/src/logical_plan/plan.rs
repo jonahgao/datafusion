@@ -2817,6 +2817,41 @@ pub struct Limit {
     pub input: Arc<LogicalPlan>,
 }
 
+/// Literal variant of the `fetch` expression.
+pub enum LiteralFetch {
+    /// The fetch expression is not provided, meaning all rows should be fetched.
+    Unspecified,
+    /// The fetch expression is a literal value.
+    Value(usize),
+}
+
+impl Limit {
+    /// Try to get the literal value of the skip expression.
+    /// Returns `None` if the skip expression is not a valid literal.
+    pub fn literal_skip(&self) -> Option<usize> {
+        match self.skip {
+            Some(Expr::Literal(ScalarValue::Int64(Some(s)))) if s >= 0 => {
+                Some(s as usize)
+            }
+            // skip = None and skip = Some(0) are equivalent
+            None => Some(0),
+            _ => None,
+        }
+    }
+
+    /// Try to get the literal value of the fetch expression.
+    /// Returns `None` if the fetch expression is not a valid literal.
+    pub fn literal_fetch(&self) -> Option<LiteralFetch> {
+        match self.fetch {
+            Some(Expr::Literal(ScalarValue::Int64(Some(f)))) if f >= 0 => {
+                Some(LiteralFetch::Value(f as usize))
+            }
+            None => Some(LiteralFetch::Unspecified),
+            _ => None,
+        }
+    }
+}
+
 /// Removes duplicate rows from the input
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Distinct {
