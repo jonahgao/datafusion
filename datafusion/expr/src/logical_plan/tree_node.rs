@@ -523,7 +523,6 @@ impl LogicalPlan {
             | LogicalPlan::RecursiveQuery(_)
             | LogicalPlan::Subquery(_)
             | LogicalPlan::SubqueryAlias(_)
-            | LogicalPlan::Limit(_)
             | LogicalPlan::Statement(_)
             | LogicalPlan::CrossJoin(_)
             | LogicalPlan::Analyze(_)
@@ -729,13 +728,26 @@ impl LogicalPlan {
                     schema,
                 }))
             }),
+            LogicalPlan::Limit(Limit { skip, fetch, input }) => {
+                map_until_stop_and_collect!(
+                    skip.map_or(Ok::<_, DataFusionError>(Transformed::no(None)), |e| {
+                        Ok(f(e)?.update_data(Some))
+                    }),
+                    fetch,
+                    fetch.map_or(Ok::<_, DataFusionError>(Transformed::no(None)), |e| {
+                        Ok(f(e)?.update_data(Some))
+                    })
+                )?
+                .update_data(|(skip, fetch)| {
+                    LogicalPlan::Limit(Limit { skip, fetch, input })
+                })
+            }
             // plans without expressions
             LogicalPlan::EmptyRelation(_)
             | LogicalPlan::Unnest(_)
             | LogicalPlan::RecursiveQuery(_)
             | LogicalPlan::Subquery(_)
             | LogicalPlan::SubqueryAlias(_)
-            | LogicalPlan::Limit(_)
             | LogicalPlan::Statement(_)
             | LogicalPlan::CrossJoin(_)
             | LogicalPlan::Analyze(_)
