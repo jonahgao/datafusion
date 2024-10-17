@@ -26,6 +26,7 @@ use crate::{OptimizerConfig, OptimizerRule};
 use datafusion_common::tree_node::Transformed;
 use datafusion_common::utils::combine_limit;
 use datafusion_common::Result;
+use datafusion_expr::lit;
 use datafusion_expr::logical_plan::{Join, JoinType, Limit, LogicalPlan};
 
 /// Optimization rule that tries to push down `LIMIT`.
@@ -56,16 +57,35 @@ impl OptimizerRule for PushDownLimit {
             return Ok(Transformed::no(plan));
         };
 
-        let Limit { skip, fetch, input } = limit;
+        // Currently only rewrite if skip and fetch are literals
+        let skip = if let Some(lit_skip) = limit.literal_skip() {
+            lit_skip
+        } else {
+            return Ok(Transformed::no(LogicalPlan::Limit(limit)));
+        };
+        let fetch: Option<usize> = if let Some(lit_fetch) = limit.literal_fetch() {
+            lit_fetch.into()
+        } else {
+            return Ok(Transformed::no(LogicalPlan::Limit(limit)));
+        };
 
         // Merge the Parent Limit and the Child Limit.
-        if let LogicalPlan::Limit(child) = input.as_ref() {
-            let (skip, fetch) =
-                combine_limit(limit.skip, limit.fetch, child.skip, child.fetch);
+        if let LogicalPlan::Limit(child) = limit.input.as_ref() {
+            let child_skip = if let Some(lit_skip) = child.literal_skip() {
+                lit_skip
+            } else {
+                return Ok(Transformed::no(LogicalPlan::Limit(limit)));
+            };
+            let child_fetch = if let Some(lit_fetch) = child.literal_fetch() {
+                lit_fetch.into()
+            } else {
+                return Ok(Transformed::no(LogicalPlan::Limit(limit)));
+            };
 
+            let (skip, fetch) = combine_limit(skip, fetch, child_skip, child_fetch);
             let plan = LogicalPlan::Limit(Limit {
-                skip,
-                fetch,
+                skip: Some(lit(skip as i64)),
+                fetch: fetch.map(|f| lit(f as i64)),
                 input: Arc::clone(&child.input),
             });
 
@@ -75,14 +95,10 @@ impl OptimizerRule for PushDownLimit {
 
         // no fetch to push, so return the original plan
         let Some(fetch) = fetch else {
-            return Ok(Transformed::no(LogicalPlan::Limit(Limit {
-                skip,
-                fetch,
-                input,
-            })));
+            return Ok(Transformed::no(LogicalPlan::Limit(limit)));
         };
 
-        match Arc::unwrap_or_clone(input) {
+        match Arc::unwrap_or_clone(limit.input) {
             LogicalPlan::TableScan(mut scan) => {
                 let rows_needed = if fetch != 0 { fetch + skip } else { 0 };
                 let new_fetch = scan
@@ -162,8 +178,8 @@ impl OptimizerRule for PushDownLimit {
                     .into_iter()
                     .map(|child| {
                         LogicalPlan::Limit(Limit {
-                            skip: 0,
-                            fetch: Some(fetch + skip),
+                            skip: None,
+                            fetch: Some(lit((fetch + skip) as i64)),
                             input: Arc::new(child.clone()),
                         })
                     })
@@ -203,8 +219,8 @@ impl OptimizerRule for PushDownLimit {
 /// ```
 fn make_limit(skip: usize, fetch: usize, input: Arc<LogicalPlan>) -> LogicalPlan {
     LogicalPlan::Limit(Limit {
-        skip,
-        fetch: Some(fetch),
+        skip: Some(lit(skip as i64)),
+        fetch: Some(lit(fetch as i64)),
         input,
     })
 }
@@ -224,11 +240,7 @@ fn original_limit(
     fetch: usize,
     input: LogicalPlan,
 ) -> Result<Transformed<LogicalPlan>> {
-    Ok(Transformed::no(LogicalPlan::Limit(Limit {
-        skip,
-        fetch: Some(fetch),
-        input: Arc::new(input),
-    })))
+    Ok(Transformed::no(make_limit(skip, fetch, Arc::new(input))))
 }
 
 /// Returns the a transformed limit
@@ -237,11 +249,7 @@ fn transformed_limit(
     fetch: usize,
     input: LogicalPlan,
 ) -> Result<Transformed<LogicalPlan>> {
-    Ok(Transformed::yes(LogicalPlan::Limit(Limit {
-        skip,
-        fetch: Some(fetch),
-        input: Arc::new(input),
-    })))
+    Ok(Transformed::yes(make_limit(skip, fetch, Arc::new(input))))
 }
 
 /// Adds a limit to the inputs of a join, if possible

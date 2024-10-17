@@ -95,7 +95,7 @@ mod tests {
     use crate::OptimizerContext;
     use datafusion_common::Column;
     use datafusion_expr::{
-        col,
+        col, lit,
         logical_plan::{builder::LogicalPlanBuilder, JoinType},
     };
     use std::sync::Arc;
@@ -137,7 +137,7 @@ mod tests {
         let table_scan = test_table_scan().unwrap();
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(0, Some(0))?
+            .limit(Some(lit(0)), Some(lit(0)))?
             .build()?;
         // No aggregate / scan / limit
         let expected = "EmptyRelation";
@@ -152,7 +152,7 @@ mod tests {
             .build()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(0, Some(0))?
+            .limit(Some(lit(0)), Some(lit(0)))?
             .union(plan1)?
             .build()?;
 
@@ -169,8 +169,8 @@ mod tests {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(0, Some(2))?
-            .limit(2, None)?
+            .limit(Some(lit(0)), Some(lit(2)))?
+            .limit(Some(lit(2)), None)?
             .build()?;
 
         // No aggregate / scan / limit
@@ -183,9 +183,9 @@ mod tests {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(0, Some(2))?
+            .limit(Some(lit(0)), Some(lit(2)))?
             .sort_by(vec![col("a")])?
-            .limit(2, Some(1))?
+            .limit(Some(lit(2)), Some(lit(1)))?
             .build()?;
 
         // After remove global-state, we don't record the parent <skip, fetch>
@@ -203,9 +203,9 @@ mod tests {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(0, Some(2))?
+            .limit(Some(lit(0)), Some(lit(2)))?
             .sort_by(vec![col("a")])?
-            .limit(0, Some(1))?
+            .limit(Some(lit(0)), Some(lit(1)))?
             .build()?;
 
         let expected = "Limit: skip=0, fetch=1\
@@ -221,9 +221,9 @@ mod tests {
         let table_scan = test_table_scan().unwrap();
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(2, Some(1))?
+            .limit(Some(lit(2)), Some(lit(1)))?
             .sort_by(vec![col("a")])?
-            .limit(3, Some(1))?
+            .limit(Some(lit(3)), Some(lit(1)))?
             .build()?;
 
         let expected = "Limit: skip=3, fetch=1\
@@ -239,13 +239,13 @@ mod tests {
         let table_scan = test_table_scan()?;
         let table_scan_inner = test_table_scan_with_name("test1")?;
         let plan = LogicalPlanBuilder::from(table_scan)
-            .limit(2, Some(1))?
+            .limit(Some(lit(2)), Some(lit(1)))?
             .join_using(
                 table_scan_inner,
                 JoinType::Inner,
                 vec![Column::from_name("a".to_string())],
             )?
-            .limit(3, Some(1))?
+            .limit(Some(lit(3)), Some(lit(1)))?
             .build()?;
 
         let expected = "Limit: skip=3, fetch=1\
@@ -261,7 +261,7 @@ mod tests {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])?
-            .limit(0, None)?
+            .limit(Some(lit(0)), None)?
             .build()?;
 
         let expected = "Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b)]]\

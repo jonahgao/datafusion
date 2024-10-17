@@ -2825,6 +2825,15 @@ pub enum LiteralFetch {
     Value(usize),
 }
 
+impl From<LiteralFetch> for Option<usize> {
+    fn from(literal_fetch: LiteralFetch) -> Self {
+        match literal_fetch {
+            LiteralFetch::Unspecified => None,
+            LiteralFetch::Value(value) => Some(value),
+        }
+    }
+}
+
 impl Limit {
     /// Try to get the literal value of the skip expression.
     /// Returns `None` if the skip expression is not a valid literal.
