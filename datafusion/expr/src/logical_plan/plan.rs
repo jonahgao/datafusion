@@ -1370,10 +1370,8 @@ impl LogicalPlan {
             LogicalPlan::RecursiveQuery(_) => None,
             LogicalPlan::Subquery(_) => None,
             LogicalPlan::SubqueryAlias(SubqueryAlias { input, .. }) => input.max_rows(),
-            LogicalPlan::Limit(Limit { fetch, .. }) => match fetch {
-                Some(Expr::Literal(ScalarValue::Int64(Some(s)))) if *s >= 0 => {
-                    Some(*s as usize)
-                }
+            LogicalPlan::Limit(limit) => match limit.get_fetch_type() {
+                Ok(FetchType::Literal(s)) => s,
                 _ => None,
             },
             LogicalPlan::Distinct(
@@ -2825,7 +2823,7 @@ pub struct Limit {
 pub enum SkipType {
     /// The skip expression is a literal value.
     Literal(usize),
-    /// The skip expression is a unsupported expression.
+    /// Non-literal skip expression is not supported.
     UnsupportedExpr,
 }
 
@@ -2834,7 +2832,7 @@ pub enum FetchType {
     /// The fetch expression is a literal value.
     /// `Literal(None)` means the fetch expression is not not provided.
     Literal(Option<usize>),
-    /// The fetch expression is a unsupported expression.
+    /// Non-literal fetch expression is not supported.
     UnsupportedExpr,
 }
 

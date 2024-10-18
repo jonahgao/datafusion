@@ -57,7 +57,7 @@ impl OptimizerRule for PushDownLimit {
             return Ok(Transformed::no(plan));
         };
 
-        // Currently only rewrite if skip and fetch are literals
+        // Currently only rewrite if skip and fetch are both literals
         let SkipType::Literal(skip) = limit.get_skip_type()? else {
             return Ok(Transformed::no(LogicalPlan::Limit(limit)));
         };
