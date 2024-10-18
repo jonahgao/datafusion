@@ -588,11 +588,11 @@ mod test {
             .build()?;
 
         // Limit should push down through union
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  Union\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)
@@ -643,9 +643,9 @@ mod test {
             .build()?;
 
         // Limit should use deeper LIMIT 1000, but Limit 10 shouldn't push down aggregation
-        let expected = "Limit: skip=0, fetch=10\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(10)\
         \n  Aggregate: groupBy=[[test.a]], aggr=[[max(test.b)]]\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)
@@ -761,11 +761,11 @@ mod test {
             .build()?;
 
         // Limit should push down through union
-        let expected = "Limit: skip=10, fetch=1000\
+        let expected = "Limit: skip=Int64(10), fetch=Int64(1000)\
         \n  Union\
-        \n    Limit: skip=0, fetch=1010\
+        \n    Limit: skip=Int64(0), fetch=Int64(1010)\
         \n      TableScan: test, fetch=1010\
-        \n    Limit: skip=0, fetch=1010\
+        \n    Limit: skip=Int64(0), fetch=Int64(1010)\
         \n      TableScan: test, fetch=1010";
 
         assert_optimized_plan_equal(plan, expected)
@@ -811,7 +811,7 @@ mod test {
             .build()?;
 
         // Limit pushdown Not supported in Join
-        let expected = "Limit: skip=10, fetch=1000\
+        let expected = "Limit: skip=Int64(10), fetch=Int64(1000)\
         \n  Inner Join: test.a = test2.a\
         \n    TableScan: test\
         \n    TableScan: test2";
@@ -865,7 +865,7 @@ mod test {
             .build()?;
 
         // Limit pushdown Not supported in sub_query
-        let expected = "Limit: skip=10, fetch=100\
+        let expected = "Limit: skip=Int64(10), fetch=Int64(100)\
         \n  Filter: EXISTS (<subquery>)\
         \n    Subquery:\
         \n      Filter: test1.a = test1.a\
@@ -912,11 +912,11 @@ mod test {
             .limit(0, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  Right Join: \
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test2, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)?;
@@ -931,11 +931,11 @@ mod test {
             .limit(0, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  Full Join: \
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test2, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)?;
@@ -950,9 +950,9 @@ mod test {
             .limit(0, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  LeftSemi Join: \
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000\
         \n    TableScan: test2";
 
@@ -968,9 +968,9 @@ mod test {
             .limit(0, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  LeftAnti Join: \
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000\
         \n    TableScan: test2";
 
@@ -986,10 +986,10 @@ mod test {
             .limit(0, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  RightSemi Join: \
         \n    TableScan: test\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test2, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)?;
@@ -1004,10 +1004,10 @@ mod test {
             .limit(0, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  RightAnti Join: \
         \n    TableScan: test\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test2, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)
@@ -1029,9 +1029,9 @@ mod test {
             .build()?;
 
         // Limit pushdown Not supported in Join
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  Left Join: test.a = test2.a\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test, fetch=1000\
         \n    TableScan: test2";
 
@@ -1054,9 +1054,9 @@ mod test {
             .build()?;
 
         // Limit pushdown Not supported in Join
-        let expected = "Limit: skip=10, fetch=1000\
+        let expected = "Limit: skip=Int64(10), fetch=Int64(1000)\
         \n  Left Join: test.a = test2.a\
-        \n    Limit: skip=0, fetch=1010\
+        \n    Limit: skip=Int64(0), fetch=Int64(1010)\
         \n      TableScan: test, fetch=1010\
         \n    TableScan: test2";
 
@@ -1079,10 +1079,10 @@ mod test {
             .build()?;
 
         // Limit pushdown Not supported in Join
-        let expected = "Limit: skip=0, fetch=1000\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1000)\
         \n  Right Join: test.a = test2.a\
         \n    TableScan: test\
-        \n    Limit: skip=0, fetch=1000\
+        \n    Limit: skip=Int64(0), fetch=Int64(1000)\
         \n      TableScan: test2, fetch=1000";
 
         assert_optimized_plan_equal(plan, expected)
@@ -1104,10 +1104,10 @@ mod test {
             .build()?;
 
         // Limit pushdown with offset supported in right outer join
-        let expected = "Limit: skip=10, fetch=1000\
+        let expected = "Limit: skip=Int64(10), fetch=Int64(1000)\
         \n  Right Join: test.a = test2.a\
         \n    TableScan: test\
-        \n    Limit: skip=0, fetch=1010\
+        \n    Limit: skip=Int64(0), fetch=Int64(1010)\
         \n      TableScan: test2, fetch=1010";
 
         assert_optimized_plan_equal(plan, expected)
@@ -1143,11 +1143,11 @@ mod test {
             .limit(1000, Some(1000))?
             .build()?;
 
-        let expected = "Limit: skip=1000, fetch=1000\
+        let expected = "Limit: skip=Int64(1000), fetch=Int64(1000)\
         \n  CrossJoin:\
-        \n    Limit: skip=0, fetch=2000\
+        \n    Limit: skip=Int64(0), fetch=Int64(2000)\
         \n      TableScan: test, fetch=2000\
-        \n    Limit: skip=0, fetch=2000\
+        \n    Limit: skip=Int64(0), fetch=Int64(2000)\
         \n      TableScan: test2, fetch=2000";
 
         assert_optimized_plan_equal(plan, expected)
@@ -1162,7 +1162,7 @@ mod test {
             .limit(1000, None)?
             .build()?;
 
-        let expected = "Limit: skip=1000, fetch=0\
+        let expected = "Limit: skip=Int64(1000), fetch=Int64(0)\
         \n  TableScan: test, fetch=0";
 
         assert_optimized_plan_equal(plan, expected)
@@ -1177,7 +1177,7 @@ mod test {
             .limit(1000, None)?
             .build()?;
 
-        let expected = "Limit: skip=1000, fetch=0\
+        let expected = "Limit: skip=Int64(1000), fetch=Int64(0)\
         \n  TableScan: test, fetch=0";
 
         assert_optimized_plan_equal(plan, expected)
@@ -1194,7 +1194,7 @@ mod test {
             .build()?;
 
         let expected = "SubqueryAlias: a\
-        \n  Limit: skip=1000, fetch=0\
+        \n  Limit: skip=Int64(1000), fetch=Int64(0)\
         \n    TableScan: test, fetch=0";
 
         assert_optimized_plan_equal(plan, expected)

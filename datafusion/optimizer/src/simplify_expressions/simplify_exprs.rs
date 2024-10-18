@@ -315,7 +315,7 @@ mod tests {
 
         let expected = "\
         Projection: test.a\
-        \n  Limit: skip=0, fetch=1\
+        \n  Limit: skip=Int64(0), fetch=Int64(1)\
         \n    Filter: test.c\
         \n      Filter: NOT test.b\
         \n        TableScan: test";
