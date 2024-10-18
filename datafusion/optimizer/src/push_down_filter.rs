@@ -1271,7 +1271,7 @@ mod tests {
         // filter is before single projection
         let expected = "\
             Filter: test.a = Int64(1)\
-            \n  Limit: skip=0, fetch=10\
+            \n  Limit: skip=Int64(0), fetch=Int64(10)\
             \n    Projection: test.a, test.b\
             \n      TableScan: test";
         assert_optimized_plan_eq(plan, expected)
@@ -1660,8 +1660,8 @@ mod tests {
         let expected = "\
             Projection: test.a, test.b\
             \n  Filter: test.a = Int64(1)\
-            \n    Limit: skip=0, fetch=10\
-            \n      Limit: skip=0, fetch=20\
+            \n    Limit: skip=Int64(0), fetch=Int64(10)\
+            \n      Limit: skip=Int64(0), fetch=Int64(20)\
             \n        Projection: test.a, test.b\
             \n          TableScan: test";
         assert_optimized_plan_eq(plan, expected)
@@ -1780,7 +1780,7 @@ mod tests {
             format!("{plan}"),
             "Filter: test.a >= Int64(1)\
              \n  Projection: test.a\
-             \n    Limit: skip=0, fetch=1\
+             \n    Limit: skip=Int64(0), fetch=Int64(1)\
              \n      Filter: test.a <= Int64(1)\
              \n        Projection: test.a\
              \n          TableScan: test"
@@ -1789,7 +1789,7 @@ mod tests {
         let expected = "\
         Projection: test.a\
         \n  Filter: test.a >= Int64(1)\
-        \n    Limit: skip=0, fetch=1\
+        \n    Limit: skip=Int64(0), fetch=Int64(1)\
         \n      Projection: test.a\
         \n        TableScan: test, full_filters=[test.a <= Int64(1)]";
 
@@ -1813,14 +1813,14 @@ mod tests {
             "Projection: test.a\
             \n  Filter: test.a >= Int64(1)\
             \n    Filter: test.a <= Int64(1)\
-            \n      Limit: skip=0, fetch=1\
+            \n      Limit: skip=Int64(0), fetch=Int64(1)\
             \n        TableScan: test"
         );
 
         let expected = "\
         Projection: test.a\
         \n  Filter: test.a >= Int64(1) AND test.a <= Int64(1)\
-        \n    Limit: skip=0, fetch=1\
+        \n    Limit: skip=Int64(0), fetch=Int64(1)\
         \n      TableScan: test";
 
         assert_optimized_plan_eq(plan, expected)

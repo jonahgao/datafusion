@@ -190,9 +190,9 @@ mod tests {
 
         // After remove global-state, we don't record the parent <skip, fetch>
         // So, bottom don't know parent info, so can't eliminate.
-        let expected = "Limit: skip=2, fetch=1\
+        let expected = "Limit: skip=Int64(2), fetch=Int64(1)\
         \n  Sort: test.a ASC NULLS LAST, fetch=3\
-        \n    Limit: skip=0, fetch=2\
+        \n    Limit: skip=Int64(0), fetch=Int64(2)\
         \n      Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b)]]\
         \n        TableScan: test";
         assert_optimized_plan_eq_with_pushdown(plan, expected)
@@ -208,9 +208,9 @@ mod tests {
             .limit(0, Some(1))?
             .build()?;
 
-        let expected = "Limit: skip=0, fetch=1\
+        let expected = "Limit: skip=Int64(0), fetch=Int64(1)\
             \n  Sort: test.a ASC NULLS LAST\
-            \n    Limit: skip=0, fetch=2\
+            \n    Limit: skip=Int64(0), fetch=Int64(2)\
             \n      Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b)]]\
             \n        TableScan: test";
         assert_optimized_plan_eq(plan, expected)
@@ -226,9 +226,9 @@ mod tests {
             .limit(3, Some(1))?
             .build()?;
 
-        let expected = "Limit: skip=3, fetch=1\
+        let expected = "Limit: skip=Int64(3), fetch=Int64(1)\
         \n  Sort: test.a ASC NULLS LAST\
-        \n    Limit: skip=2, fetch=1\
+        \n    Limit: skip=Int64(2), fetch=Int64(1)\
         \n      Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b)]]\
         \n        TableScan: test";
         assert_optimized_plan_eq(plan, expected)
@@ -248,9 +248,9 @@ mod tests {
             .limit(3, Some(1))?
             .build()?;
 
-        let expected = "Limit: skip=3, fetch=1\
+        let expected = "Limit: skip=Int64(3), fetch=Int64(1)\
             \n  Inner Join: Using test.a = test1.a\
-            \n    Limit: skip=2, fetch=1\
+            \n    Limit: skip=Int64(2), fetch=Int64(1)\
             \n      TableScan: test\
             \n    TableScan: test1";
         assert_optimized_plan_eq(plan, expected)
