@@ -1942,14 +1942,14 @@ impl LogicalPlan {
                     },
                     LogicalPlan::Limit(limit) => {
                         // Attempt to display `skip` and `fetch` as literals if possible, otherwise as expressions.
-                        let skip_str = match limit.literal_skip() {
-                            Some(n) => n.to_string(),
-                            None => limit.skip.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string()),
+                        let skip_str = match limit.get_skip_type() {
+                            Ok(SkipType::Literal(n)) => n.to_string(),
+                            _ => limit.skip.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string()),
                         };
-                        let fetch_str = match limit.literal_fetch() {
-                            Some(LiteralFetch::Unspecified) => "None".to_string(),
-                            Some(LiteralFetch::Value(f)) => f.to_string(),
-                            None => limit.fetch.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string())
+                        let fetch_str = match limit.get_fetch_type() {
+                            Ok(FetchType::Literal(Some(n))) => n.to_string(),
+                            Ok(FetchType::Literal(None)) => "None".to_string(),
+                            _ => limit.fetch.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string())
                         };
                         write!(
                             f,
@@ -2821,46 +2821,56 @@ pub struct Limit {
     pub input: Arc<LogicalPlan>,
 }
 
-/// Literal variant of the `fetch` expression.
-pub enum LiteralFetch {
-    /// The fetch expression is not provided, meaning all rows should be fetched.
-    Unspecified,
-    /// The fetch expression is a literal value.
-    Value(usize),
+/// Different types of skip expression in the LIMIT clause.
+pub enum SkipType {
+    /// The skip expression is a literal value.
+    Literal(usize),
+    /// The skip expression is a unsupported expression.
+    UnsupportedExpr,
 }
 
-impl From<LiteralFetch> for Option<usize> {
-    fn from(literal_fetch: LiteralFetch) -> Self {
-        match literal_fetch {
-            LiteralFetch::Unspecified => None,
-            LiteralFetch::Value(value) => Some(value),
-        }
-    }
+/// Different types of fetch expression in the LIMIT clause.
+pub enum FetchType {
+    /// The fetch expression is a literal value.
+    /// `Literal(None)` means the fetch expression is not not provided.
+    Literal(Option<usize>),
+    /// The fetch expression is a unsupported expression.
+    UnsupportedExpr,
 }
 
 impl Limit {
-    /// Try to get the literal value of the skip expression.
-    /// Returns `None` if the skip expression is not a valid literal.
-    pub fn literal_skip(&self) -> Option<usize> {
+    /// Get the skip type of the LIMIT plan
+    pub fn get_skip_type(&self) -> Result<SkipType> {
         match self.skip {
-            Some(Expr::Literal(ScalarValue::Int64(Some(s)))) if s >= 0 => {
-                Some(s as usize)
+            Some(Expr::Literal(ScalarValue::Int64(s))) => {
+                // `skip = NULL` is equivalent to `skip = 0`
+                let s = s.unwrap_or(0);
+                if s >= 0 {
+                    Ok(SkipType::Literal(s as usize))
+                } else {
+                    plan_err!("LIMIT OFFSET must not be negative, but found {}", s)
+                }
             }
-            // skip = None and skip = Some(0) are equivalent
-            None => Some(0),
-            _ => None,
+            // `skip = None` is equivalent to `skip = 0`
+            None => Ok(SkipType::Literal(0)),
+            _ => Ok(SkipType::UnsupportedExpr),
         }
     }
 
-    /// Try to get the literal value of the fetch expression.
-    /// Returns `None` if the fetch expression is not a valid literal.
-    pub fn literal_fetch(&self) -> Option<LiteralFetch> {
+    /// Get the fetch type of the LIMIT plan.
+    pub fn get_fetch_type(&self) -> Result<FetchType> {
         match self.fetch {
-            Some(Expr::Literal(ScalarValue::Int64(Some(f)))) if f >= 0 => {
-                Some(LiteralFetch::Value(f as usize))
+            Some(Expr::Literal(ScalarValue::Int64(Some(s)))) => {
+                if s >= 0 {
+                    Ok(FetchType::Literal(Some(s as usize)))
+                } else {
+                    plan_err!("LIMIT FETCH must not be negative, but found {}", s)
+                }
             }
-            None => Some(LiteralFetch::Unspecified),
-            _ => None,
+            Some(Expr::Literal(ScalarValue::Int64(None))) | None => {
+                Ok(FetchType::Literal(None))
+            }
+            _ => Ok(FetchType::UnsupportedExpr),
         }
     }
 }

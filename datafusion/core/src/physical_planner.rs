@@ -68,8 +68,8 @@ use arrow_array::builder::StringBuilder;
 use arrow_array::RecordBatch;
 use datafusion_common::display::ToStringifiedPlan;
 use datafusion_common::{
-    exec_err, internal_datafusion_err, internal_err, not_impl_datafusion_err,
-    not_impl_err, plan_err, DFSchema, ScalarValue,
+    exec_err, internal_datafusion_err, internal_err, not_impl_err, plan_err, DFSchema,
+    ScalarValue,
 };
 use datafusion_expr::dml::{CopyTo, InsertOp};
 use datafusion_expr::expr::{
@@ -78,8 +78,8 @@ use datafusion_expr::expr::{
 use datafusion_expr::expr_rewriter::unnormalize_cols;
 use datafusion_expr::logical_plan::builder::wrap_projection_for_join_if_necessary;
 use datafusion_expr::{
-    DescribeTable, DmlStatement, Extension, Filter, RecursiveQuery, SortExpr,
-    StringifiedPlan, WindowFrame, WindowFrameBound, WriteOp,
+    DescribeTable, DmlStatement, Extension, FetchType, Filter, RecursiveQuery, SkipType,
+    SortExpr, StringifiedPlan, WindowFrame, WindowFrameBound, WriteOp,
 };
 use datafusion_physical_expr::aggregate::{AggregateExprBuilder, AggregateFunctionExpr};
 use datafusion_physical_expr::expressions::Literal;
@@ -798,20 +798,18 @@ impl DefaultPhysicalPlanner {
             LogicalPlan::SubqueryAlias(_) => children.one()?,
             LogicalPlan::Limit(limit) => {
                 let input = children.one()?;
-
-                let skip = limit.literal_skip().ok_or_else(|| {
-                    not_impl_datafusion_err!(
-                        "unsupported LIMIT clause: SKIP must be a constant literal"
-                    )
-                })?;
-                let fetch: Option<usize> = limit
-                    .literal_fetch()
-                    .ok_or_else(|| {
-                        not_impl_datafusion_err!(
-                            "unsupported LIMIT clause: FETCH must be a constant literal"
-                        )
-                    })?
-                    .into();
+                let SkipType::Literal(skip) = limit.get_skip_type()? else {
+                    return not_impl_err!(
+                        "Unsupported SKIP expression in LIMIT clause: {:?}",
+                        limit.skip
+                    );
+                };
+                let FetchType::Literal(fetch) = limit.get_fetch_type()? else {
+                    return not_impl_err!(
+                        "Unsupported FETCH expression in LIMIT clause: {:?}",
+                        limit.fetch
+                    );
+                };
 
                 // GlobalLimitExec requires a single partition for input
                 let input = if input.output_partitioning().partition_count() == 1 {

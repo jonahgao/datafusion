@@ -26,8 +26,8 @@ use crate::{OptimizerConfig, OptimizerRule};
 use datafusion_common::tree_node::Transformed;
 use datafusion_common::utils::combine_limit;
 use datafusion_common::Result;
-use datafusion_expr::lit;
 use datafusion_expr::logical_plan::{Join, JoinType, Limit, LogicalPlan};
+use datafusion_expr::{lit, FetchType, SkipType};
 
 /// Optimization rule that tries to push down `LIMIT`.
 ///
@@ -58,27 +58,19 @@ impl OptimizerRule for PushDownLimit {
         };
 
         // Currently only rewrite if skip and fetch are literals
-        let skip = if let Some(lit_skip) = limit.literal_skip() {
-            lit_skip
-        } else {
+        let SkipType::Literal(skip) = limit.get_skip_type()? else {
             return Ok(Transformed::no(LogicalPlan::Limit(limit)));
         };
-        let fetch: Option<usize> = if let Some(lit_fetch) = limit.literal_fetch() {
-            lit_fetch.into()
-        } else {
+        let FetchType::Literal(fetch) = limit.get_fetch_type()? else {
             return Ok(Transformed::no(LogicalPlan::Limit(limit)));
         };
 
         // Merge the Parent Limit and the Child Limit.
         if let LogicalPlan::Limit(child) = limit.input.as_ref() {
-            let child_skip = if let Some(lit_skip) = child.literal_skip() {
-                lit_skip
-            } else {
+            let SkipType::Literal(child_skip) = child.get_skip_type()? else {
                 return Ok(Transformed::no(LogicalPlan::Limit(limit)));
             };
-            let child_fetch = if let Some(lit_fetch) = child.literal_fetch() {
-                lit_fetch.into()
-            } else {
+            let FetchType::Literal(child_fetch) = child.get_fetch_type()? else {
                 return Ok(Transformed::no(LogicalPlan::Limit(limit)));
             };
 

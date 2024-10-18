@@ -32,7 +32,7 @@ use datafusion_expr::expr::Alias;
 use datafusion_expr::simplify::SimplifyContext;
 use datafusion_expr::utils::{conjunction, find_join_exprs, split_conjunction};
 use datafusion_expr::{
-    expr, lit, EmptyRelation, Expr, LiteralFetch, LogicalPlan, LogicalPlanBuilder,
+    expr, lit, EmptyRelation, Expr, FetchType, LogicalPlan, LogicalPlanBuilder,
 };
 use datafusion_physical_expr::execution_props::ExecutionProps;
 
@@ -329,8 +329,8 @@ impl TreeNodeRewriter for PullUpCorrelatedExpr {
                 let new_plan = match (self.exists_sub_query, self.join_filters.is_empty())
                 {
                     // Correlated exist subquery, remove the limit(so that correlated expressions can pull up)
-                    (true, false) => Transformed::yes(match limit.literal_fetch() {
-                        Some(LiteralFetch::Value(v)) if v == 0 => {
+                    (true, false) => Transformed::yes(match limit.get_fetch_type()? {
+                        FetchType::Literal(Some(v)) if v == 0 => {
                             LogicalPlan::EmptyRelation(EmptyRelation {
                                 produce_one_row: false,
                                 schema: Arc::clone(limit.input.schema()),
