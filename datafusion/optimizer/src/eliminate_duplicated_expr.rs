@@ -135,7 +135,7 @@ mod tests {
             .sort_by(vec![col("a"), col("a"), col("b"), col("c")])?
             .limit(5, Some(10))?
             .build()?;
-        let expected = "Limit: skip=Int64(5), fetch=Int64(10)\
+        let expected = "Limit: skip=5, fetch=10\
         \n  Sort: test.a ASC NULLS LAST, test.b ASC NULLS LAST, test.c ASC NULLS LAST\
         \n    TableScan: test";
         assert_optimized_plan_eq(plan, expected)
@@ -154,7 +154,7 @@ mod tests {
             .sort(sort_exprs)?
             .limit(5, Some(10))?
             .build()?;
-        let expected = "Limit: skip=Int64(5), fetch=Int64(10)\
+        let expected = "Limit: skip=5, fetch=10\
         \n  Sort: test.a ASC NULLS FIRST, test.b ASC NULLS LAST\
         \n    TableScan: test";
         assert_optimized_plan_eq(plan, expected)

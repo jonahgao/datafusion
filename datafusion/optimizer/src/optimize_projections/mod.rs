@@ -1759,7 +1759,7 @@ mod tests {
 
         assert_fields_eq(&plan, vec!["c", "a"]);
 
-        let expected = "Limit: skip=Int64(0), fetch=Int64(5)\
+        let expected = "Limit: skip=0, fetch=5\
         \n  Projection: test.c, test.a\
         \n    TableScan: test projection=[a, c]";
 

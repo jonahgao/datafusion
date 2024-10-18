@@ -517,7 +517,7 @@ fn plan_copy_to_query() {
     let sql = "COPY (select * from test_decimal limit 10) to 'output.csv'";
     let plan = r#"
 CopyTo: format=csv output_url=output.csv options: ()
-  Limit: skip=None, fetch=Int64(10)
+  Limit: skip=0, fetch=10
     Projection: *
       TableScan: test_decimal
     "#
@@ -3277,7 +3277,7 @@ fn group_by_ambiguous_name() {
 #[test]
 fn test_zero_offset_with_limit() {
     let sql = "select id from person where person.id > 100 LIMIT 5 OFFSET 0;";
-    let expected = "Limit: skip=Int64(0), fetch=Int64(5)\
+    let expected = "Limit: skip=0, fetch=5\
                                     \n  Projection: person.id\
                                     \n    Filter: person.id > Int64(100)\
                                     \n      TableScan: person";
@@ -3291,7 +3291,7 @@ fn test_zero_offset_with_limit() {
 #[test]
 fn test_offset_no_limit() {
     let sql = "SELECT id FROM person WHERE person.id > 100 OFFSET 5;";
-    let expected = "Limit: skip=Int64(5), fetch=None\
+    let expected = "Limit: skip=5, fetch=None\
         \n  Projection: person.id\
         \n    Filter: person.id > Int64(100)\
         \n      TableScan: person";
@@ -3301,7 +3301,7 @@ fn test_offset_no_limit() {
 #[test]
 fn test_offset_after_limit() {
     let sql = "select id from person where person.id > 100 LIMIT 5 OFFSET 3;";
-    let expected = "Limit: skip=Int64(3), fetch=Int64(5)\
+    let expected = "Limit: skip=3, fetch=5\
         \n  Projection: person.id\
         \n    Filter: person.id > Int64(100)\
         \n      TableScan: person";
@@ -3311,7 +3311,7 @@ fn test_offset_after_limit() {
 #[test]
 fn test_offset_before_limit() {
     let sql = "select id from person where person.id > 100 OFFSET 3 LIMIT 5;";
-    let expected = "Limit: skip=Int64(3), fetch=Int64(5)\
+    let expected = "Limit: skip=3, fetch=5\
         \n  Projection: person.id\
         \n    Filter: person.id > Int64(100)\
         \n      TableScan: person";

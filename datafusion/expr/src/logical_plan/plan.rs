@@ -1940,16 +1940,20 @@ impl LogicalPlan {
                             )
                         }
                     },
-                    LogicalPlan::Limit(Limit {
-                        ref skip,
-                        ref fetch,
-                        ..
-                    }) => {
+                    LogicalPlan::Limit(limit) => {
+                        // Attempt to display `skip` and `fetch` as literals if possible, otherwise as expressions.
+                        let skip_str = match limit.literal_skip() {
+                            Some(n) => n.to_string(),
+                            None => limit.skip.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string()),
+                        };
+                        let fetch_str = match limit.literal_fetch() {
+                            Some(LiteralFetch::Unspecified) => "None".to_string(),
+                            Some(LiteralFetch::Value(f)) => f.to_string(),
+                            None => limit.fetch.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string())
+                        };
                         write!(
                             f,
-                            "Limit: skip={}, fetch={}",
-                            skip.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string()),
-                            fetch.as_ref().map_or_else(|| "None".to_string(), |x| x.to_string())
+                            "Limit: skip={}, fetch={}", skip_str,fetch_str,
                         )
                     }
                     LogicalPlan::Subquery(Subquery { .. }) => {
