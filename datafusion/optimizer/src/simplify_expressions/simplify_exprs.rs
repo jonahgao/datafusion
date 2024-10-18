@@ -309,7 +309,7 @@ mod tests {
         let plan = LogicalPlanBuilder::from(table_scan)
             .filter(col("b").not_eq(lit(true)))?
             .filter(col("c").not_eq(lit(false)))?
-            .limit(Some(lit(0)), Some(lit(1)))?
+            .limit(0, Some(1))?
             .project(vec![col("a")])?
             .build()?;
 

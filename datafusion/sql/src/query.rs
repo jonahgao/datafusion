@@ -92,7 +92,9 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         let fetch = fetch
             .map(|e| self.sql_to_expr(e, input.schema(), &mut PlannerContext::new()))
             .transpose()?;
-        LogicalPlanBuilder::from(input).limit(skip, fetch)?.build()
+        LogicalPlanBuilder::from(input)
+            .limit_by_expr(skip, fetch)?
+            .build()
     }
 
     /// Wrap the logical in a sort

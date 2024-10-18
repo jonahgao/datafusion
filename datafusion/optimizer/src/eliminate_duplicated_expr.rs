@@ -117,7 +117,7 @@ impl OptimizerRule for EliminateDuplicatedExpr {
 mod tests {
     use super::*;
     use crate::test::*;
-    use datafusion_expr::{col, lit, logical_plan::builder::LogicalPlanBuilder};
+    use datafusion_expr::{col, logical_plan::builder::LogicalPlanBuilder};
     use std::sync::Arc;
 
     fn assert_optimized_plan_eq(plan: LogicalPlan, expected: &str) -> Result<()> {
@@ -133,7 +133,7 @@ mod tests {
         let table_scan = test_table_scan().unwrap();
         let plan = LogicalPlanBuilder::from(table_scan)
             .sort_by(vec![col("a"), col("a"), col("b"), col("c")])?
-            .limit(Some(lit(5)), Some(lit(10)))?
+            .limit(5, Some(10))?
             .build()?;
         let expected = "Limit: skip=5, fetch=10\
         \n  Sort: test.a ASC NULLS LAST, test.b ASC NULLS LAST, test.c ASC NULLS LAST\
@@ -152,7 +152,7 @@ mod tests {
         ];
         let plan = LogicalPlanBuilder::from(table_scan)
             .sort(sort_exprs)?
-            .limit(Some(lit(5)), Some(lit(10)))?
+            .limit(5, Some(10))?
             .build()?;
         let expected = "Limit: skip=5, fetch=10\
         \n  Sort: test.a ASC NULLS FIRST, test.b ASC NULLS LAST\

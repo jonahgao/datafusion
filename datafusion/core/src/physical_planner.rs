@@ -28,6 +28,7 @@ use crate::datasource::source_as_provider;
 use crate::error::{DataFusionError, Result};
 use crate::execution::context::{ExecutionProps, SessionState};
 use crate::logical_expr::utils::generate_sort_key;
+use crate::logical_expr::Values;
 use crate::logical_expr::{
     Aggregate, EmptyRelation, Join, Projection, Sort, TableScan, Unnest, Window,
 };
@@ -35,7 +36,6 @@ use crate::logical_expr::{
     Expr, LogicalPlan, Partitioning as LogicalPartitioning, PlanType, Repartition,
     UserDefinedLogicalNode,
 };
-use crate::logical_expr::{Limit, Values};
 use crate::physical_expr::{create_physical_expr, create_physical_exprs};
 use crate::physical_plan::aggregates::{AggregateExec, AggregateMode, PhysicalGroupBy};
 use crate::physical_plan::analyze::AnalyzeExec;
@@ -68,8 +68,8 @@ use arrow_array::builder::StringBuilder;
 use arrow_array::RecordBatch;
 use datafusion_common::display::ToStringifiedPlan;
 use datafusion_common::{
-    exec_err, internal_datafusion_err, internal_err, not_impl_err, plan_err, DFSchema,
-    ScalarValue,
+    exec_err, internal_datafusion_err, internal_err, not_impl_datafusion_err,
+    not_impl_err, plan_err, DFSchema, ScalarValue,
 };
 use datafusion_expr::dml::{CopyTo, InsertOp};
 use datafusion_expr::expr::{
@@ -796,8 +796,22 @@ impl DefaultPhysicalPlanner {
             }
             LogicalPlan::Subquery(_) => todo!(),
             LogicalPlan::SubqueryAlias(_) => children.one()?,
-            LogicalPlan::Limit(Limit { skip, fetch, .. }) => {
+            LogicalPlan::Limit(limit) => {
                 let input = children.one()?;
+
+                let skip = limit.literal_skip().ok_or_else(|| {
+                    not_impl_datafusion_err!(
+                        "unsupported LIMIT clause: SKIP must be a constant literal"
+                    )
+                })?;
+                let fetch: Option<usize> = limit
+                    .literal_fetch()
+                    .ok_or_else(|| {
+                        not_impl_datafusion_err!(
+                            "unsupported LIMIT clause: FETCH must be a constant literal"
+                        )
+                    })?
+                    .into();
 
                 // GlobalLimitExec requires a single partition for input
                 let input = if input.output_partitioning().partition_count() == 1 {
@@ -806,13 +820,13 @@ impl DefaultPhysicalPlanner {
                     // Apply a LocalLimitExec to each partition. The optimizer will also insert
                     // a CoalescePartitionsExec between the GlobalLimitExec and LocalLimitExec
                     if let Some(fetch) = fetch {
-                        Arc::new(LocalLimitExec::new(input, *fetch + skip))
+                        Arc::new(LocalLimitExec::new(input, fetch + skip))
                     } else {
                         input
                     }
                 };
 
-                Arc::new(GlobalLimitExec::new(input, *skip, *fetch))
+                Arc::new(GlobalLimitExec::new(input, skip, fetch))
             }
             LogicalPlan::Unnest(Unnest {
                 list_type_columns,

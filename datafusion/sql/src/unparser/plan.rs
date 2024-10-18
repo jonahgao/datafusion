@@ -668,7 +668,7 @@ impl Unparser<'_> {
                 }
 
                 if let Some(fetch) = table_scan.fetch {
-                    builder = builder.limit(None, Some(lit(fetch as i64)))?;
+                    builder = builder.limit_by_expr(None, Some(lit(fetch as i64)))?;
                 }
 
                 Ok(Some(builder.build()?))
