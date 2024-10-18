@@ -63,10 +63,11 @@ impl OptimizerRule for EliminateLimit {
     > {
         match plan {
             LogicalPlan::Limit(limit) => {
-                let fetch = limit.get_fetch_type()?;
-                let skip = limit.get_skip_type()?;
-                if let FetchType::Literal(Some(lit_fetch)) = fetch {
-                    if lit_fetch == 0 {
+                let FetchType::Literal(fetch) = limit.get_fetch_type()? else {
+                    return Ok(Transformed::no(LogicalPlan::Limit(limit)));
+                };
+                if let Some(v) = fetch {
+                    if v == 0 {
                         return Ok(Transformed::yes(LogicalPlan::EmptyRelation(
                             EmptyRelation {
                                 produce_one_row: false,
@@ -74,7 +75,7 @@ impl OptimizerRule for EliminateLimit {
                             },
                         )));
                     }
-                } else if matches!(skip, SkipType::Literal(0)) {
+                } else if matches!(limit.get_skip_type()?, SkipType::Literal(0)) {
                     // input also can be Limit, so we should apply again.
                     return Ok(self
                         .rewrite(Arc::unwrap_or_clone(limit.input), _config)

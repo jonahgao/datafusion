@@ -330,8 +330,8 @@ pub fn to_substrait_rel(
                     common: None,
                     input: Some(input),
                     offset: skip as i64,
-                    // Since protobuf can't directly distinguish `None` vs `0` encode `None` as `MAX`
-                    count: fetch.map(|f| f as i64).unwrap_or(i64::MAX),
+                    // use -1 to signal that ALL records should be returned
+                    count: fetch.map(|f| f as i64).unwrap_or(-1),
                     advanced_extension: None,
                 }))),
             }))

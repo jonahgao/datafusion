@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use crate::planner::{ContextProvider, PlannerContext, SqlToRel};
 
-use datafusion_common::{not_impl_err, Constraints, Result};
+use datafusion_common::{not_impl_err, Constraints, DFSchema, Result};
 use datafusion_expr::expr::Sort;
 use datafusion_expr::{
     CreateMemoryTable, DdlStatement, Distinct, LogicalPlan, LogicalPlanBuilder,
@@ -84,13 +84,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             return Ok(input);
         }
 
+        // skip and fetch expressions are not allowed to reference columns from the input plan
+        let empty_schema = DFSchema::empty();
+
         let skip = skip
-            .map(|o| {
-                self.sql_to_expr(o.value, input.schema(), &mut PlannerContext::new())
-            })
+            .map(|o| self.sql_to_expr(o.value, &empty_schema, &mut PlannerContext::new()))
             .transpose()?;
         let fetch = fetch
-            .map(|e| self.sql_to_expr(e, input.schema(), &mut PlannerContext::new()))
+            .map(|e| self.sql_to_expr(e, &empty_schema, &mut PlannerContext::new()))
             .transpose()?;
         LogicalPlanBuilder::from(input)
             .limit_by_expr(skip, fetch)?

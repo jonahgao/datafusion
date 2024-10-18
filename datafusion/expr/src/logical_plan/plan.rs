@@ -2839,7 +2839,7 @@ pub enum FetchType {
 }
 
 impl Limit {
-    /// Get the skip type of the LIMIT plan
+    /// Get the skip type from the limit plan.
     pub fn get_skip_type(&self) -> Result<SkipType> {
         match self.skip {
             Some(Expr::Literal(ScalarValue::Int64(s))) => {
@@ -2848,7 +2848,7 @@ impl Limit {
                 if s >= 0 {
                     Ok(SkipType::Literal(s as usize))
                 } else {
-                    plan_err!("LIMIT OFFSET must not be negative, but found {}", s)
+                    plan_err!("LIMIT OFFSET must be >=0, '{}' was provided", s)
                 }
             }
             // `skip = None` is equivalent to `skip = 0`
@@ -2857,14 +2857,14 @@ impl Limit {
         }
     }
 
-    /// Get the fetch type of the LIMIT plan.
+    /// Get the fetch type from the limit plan.
     pub fn get_fetch_type(&self) -> Result<FetchType> {
         match self.fetch {
             Some(Expr::Literal(ScalarValue::Int64(Some(s)))) => {
                 if s >= 0 {
                     Ok(FetchType::Literal(Some(s as usize)))
                 } else {
-                    plan_err!("LIMIT FETCH must not be negative, but found {}", s)
+                    plan_err!("LIMIT must be >= 0, '{}' was provided.", s)
                 }
             }
             Some(Expr::Literal(ScalarValue::Int64(None))) | None => {

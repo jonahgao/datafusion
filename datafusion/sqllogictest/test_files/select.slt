@@ -581,7 +581,7 @@ select * from (select 1 a union all select 2) b order by a limit 1;
 1
 
 # select limit clause invalid
-statement error DataFusion error: Error during planning: LIMIT must be >= 0, '\-1' was provided\.
+statement error Error during planning: LIMIT must be >= 0, '\-1' was provided\.
 select * from (select 1 a union all select 2) b order by a limit -1;
 
 # select limit with basic arithmetic
@@ -597,13 +597,27 @@ select * from (values (1)) LIMIT 10*100;
 ----
 1
 
-# More complex expressions in the limit is not supported yet.
-# See issue: https://github.com/apache/datafusion/issues/9821
-statement error DataFusion error: Error during planning: Unsupported operator for LIMIT clause
+# select limit with complex arithmetic
+query I
 select * from (values (1)) LIMIT 100/10;
+----
+1
 
-# More complex expressions in the limit is not supported yet.
-statement error DataFusion error: Error during planning: Unexpected expression in LIMIT clause
+query I
+select * from (values (1), (2), (3), (4)) LIMIT abs(-4) + -1 * 2;
+----
+1
+2
+
+query I
+select * from (values (1), (2), (3), (4))
+  LIMIT abs(-4) + -1 * 2
+  OFFSET case when 1 < 2 then 1 else 0 end;
+----
+2
+3
+
+statement error Schema error: No field named column1.
 select * from (values (1)) LIMIT cast(column1 as tinyint);
 
 # select limit clause
