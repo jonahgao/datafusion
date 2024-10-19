@@ -614,14 +614,14 @@ select * from (values (1)) LIMIT 100/10;
 
 # test constant-folding of LIMIT expr
 query I
-select * from (values (1), (2), (3), (4)) LIMIT abs(-4) + -1 * 2; -- LIMIT 2
+select * from (values (1), (2), (3), (4)) LIMIT abs(-4) + 4 / -2; -- LIMIT 2
 ----
 1
 2
 
 # test constant-folding of OFFSET expr
 query I
-select * from (values (1), (2), (3), (4)) OFFSET abs(-4) + -1 * 2; -- OFFSET 2
+select * from (values (1), (2), (3), (4)) OFFSET abs(-4) + 4 / -2; -- OFFSET 2
 ----
 3
 4
