@@ -330,7 +330,7 @@ impl Unparser<'_> {
                     };
                     query.offset(Some(ast::Offset {
                         rows: ast::OffsetRows::None,
-                        value: self.expr_to_sql(&skip)?,
+                        value: self.expr_to_sql(skip)?,
                     }));
                 }
 

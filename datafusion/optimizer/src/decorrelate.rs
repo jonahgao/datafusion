@@ -330,7 +330,7 @@ impl TreeNodeRewriter for PullUpCorrelatedExpr {
                 {
                     // Correlated exist subquery, remove the limit(so that correlated expressions can pull up)
                     (true, false) => Transformed::yes(match limit.get_fetch_type()? {
-                        FetchType::Literal(Some(v)) if v == 0 => {
+                        FetchType::Literal(Some(0)) => {
                             LogicalPlan::EmptyRelation(EmptyRelation {
                                 produce_one_row: false,
                                 schema: Arc::clone(limit.input.schema()),

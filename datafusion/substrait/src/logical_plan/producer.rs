@@ -15,8 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use datafusion::config::ConfigOptions;
+use datafusion::optimizer::analyzer::expand_wildcard_rule::ExpandWildcardRule;
+use datafusion::optimizer::AnalyzerRule;
 use std::sync::Arc;
-use std::{i64, usize};
 use substrait::proto::expression_reference::ExprType;
 
 use arrow_buffer::ToByteSlice;
@@ -104,9 +106,14 @@ pub fn to_substrait_plan(plan: &LogicalPlan, ctx: &SessionContext) -> Result<Box
     // Parse relation nodes
     // Generate PlanRel(s)
     // Note: Only 1 relation tree is currently supported
+
+    // We have to expand wildcard expressions first as wildcards can't be represented in substrait
+    let plan = Arc::new(ExpandWildcardRule::new())
+        .analyze(plan.clone(), &ConfigOptions::default())?;
+
     let plan_rels = vec![PlanRel {
         rel_type: Some(plan_rel::RelType::Root(RelRoot {
-            input: Some(*to_substrait_rel(plan, ctx, &mut extensions)?),
+            input: Some(*to_substrait_rel(&plan, ctx, &mut extensions)?),
             names: to_substrait_named_struct(plan.schema(), &mut extensions)?.names,
         })),
     }];

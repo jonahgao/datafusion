@@ -223,6 +223,7 @@ pub enum LogicalPlan {
     Join(Join),
     /// Apply Cross Join to two logical plans.
     /// This is used to implement SQL `CROSS JOIN`
+    /// Deprecated: use [LogicalPlan::Join] instead with empty `on` / no filter
     CrossJoin(CrossJoin),
     /// Repartitions the input based on a partitioning scheme. This is
     /// used to add parallelism and is sometimes referred to as an
@@ -1887,6 +1888,11 @@ impl LogicalPlan {
                             .as_ref()
                             .map(|expr| format!(" Filter: {expr}"))
                             .unwrap_or_else(|| "".to_string());
+                        let join_type = if filter.is_none() && keys.is_empty() && matches!(join_type, JoinType::Inner) {
+                            "Cross".to_string()
+                        } else {
+                            join_type.to_string()
+                        };
                         match join_constraint {
                             JoinConstraint::On => {
                                 write!(
