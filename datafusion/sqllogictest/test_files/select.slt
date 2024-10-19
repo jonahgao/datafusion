@@ -637,6 +637,13 @@ select * from (values (1), (2), (3), (4))
 2
 3
 
+# test LIMIT and OFFSET with non-integer values
+query I
+select * from (values (1), (2), (3), (4)) LIMIT 2.0 OFFSET '1';
+----
+2
+3
+
 statement error Schema error: No field named column1.
 select * from (values (1)) LIMIT cast(column1 as tinyint);
 
