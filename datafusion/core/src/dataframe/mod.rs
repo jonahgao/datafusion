@@ -3027,8 +3027,7 @@ mod tests {
 
         // build query using SQL
         let sql_plan =
-            create_plan("SELECT c1, c2, c11 FROM aggregate_test_100 LIMIT 10 OFFSET 0")
-                .await?;
+            create_plan("SELECT c1, c2, c11 FROM aggregate_test_100 LIMIT 10").await?;
 
         // the two plans should be identical
         assert_same_plan(&plan, &sql_plan);
@@ -3054,10 +3053,9 @@ mod tests {
         let plan = df.plan.clone();
 
         // build query using SQL
-        let sql_plan = create_plan(
-            "EXPLAIN SELECT c1, c2, c11 FROM aggregate_test_100 LIMIT 10 OFFSET 0",
-        )
-        .await?;
+        let sql_plan =
+            create_plan("EXPLAIN SELECT c1, c2, c11 FROM aggregate_test_100 LIMIT 10")
+                .await?;
 
         // the two plans should be identical
         assert_same_plan(&plan, &sql_plan);

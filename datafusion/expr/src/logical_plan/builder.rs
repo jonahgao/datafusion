@@ -432,7 +432,13 @@ impl LogicalPlanBuilder {
     /// `fetch` - Maximum number of rows to fetch, after skipping `skip` rows,
     ///          if specified.
     pub fn limit(self, skip: usize, fetch: Option<usize>) -> Result<Self> {
-        self.limit_by_expr(Some(lit(skip as i64)), fetch.map(|f| lit(f as i64)))
+        let skip_expr = if skip == 0 {
+            None
+        } else {
+            Some(lit(skip as i64))
+        };
+        let fetch_expr = fetch.map(|f| lit(f as i64));
+        self.limit_by_expr(skip_expr, fetch_expr)
     }
 
     /// Limit the number of rows returned
