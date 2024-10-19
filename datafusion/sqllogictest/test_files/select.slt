@@ -581,8 +581,17 @@ select * from (select 1 a union all select 2) b order by a limit 1;
 1
 
 # select limit clause invalid
-statement error Error during planning: LIMIT must be >= 0, '\-1' was provided\.
+statement error Error during planning: LIMIT must be >= 0, '-1' was provided
 select * from (select 1 a union all select 2) b order by a limit -1;
+
+statement error Error during planning: OFFSET must be >=0, '-1' was provided
+select * from (select 1 a union all select 2) b order by a offset -1;
+
+statement error Unsupported LIMIT expression
+select * from (values(1),(2)) limit (select 1);
+
+statement error Unsupported OFFSET expression
+select * from (values(1),(2)) offset (select 1);
 
 # select limit with basic arithmetic
 query I
@@ -603,15 +612,26 @@ select * from (values (1)) LIMIT 100/10;
 ----
 1
 
+# test constant-folding of LIMIT expr
 query I
-select * from (values (1), (2), (3), (4)) LIMIT abs(-4) + -1 * 2;
+select * from (values (1), (2), (3), (4)) LIMIT abs(-4) + -1 * 2; -- LIMIT 2
 ----
 1
 2
 
+# test constant-folding of OFFSET expr
+query I
+select * from (values (1), (2), (3), (4)) OFFSET abs(-4) + -1 * 2; -- OFFSET 2
+----
+3
+4
+
+# test constant-folding of LIMIT and OFFSET
 query I
 select * from (values (1), (2), (3), (4))
+  -- LIMIT 2
   LIMIT abs(-4) + -1 * 2
+  -- OFFSET 1
   OFFSET case when 1 < 2 then 1 else 0 end;
 ----
 2
@@ -623,6 +643,13 @@ select * from (values (1)) LIMIT cast(column1 as tinyint);
 # select limit clause
 query I
 select * from (select 1 a union all select 2) b order by a limit null;
+----
+1
+2
+
+# offset null takes no effect
+query I
+select * from (select 1 a union all select 2) b order by a offset null;
 ----
 1
 2

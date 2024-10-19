@@ -2825,20 +2825,20 @@ pub struct Limit {
     pub input: Arc<LogicalPlan>,
 }
 
-/// Different types of skip expression in the LIMIT clause.
+/// Different types of skip expression in Limit plan.
 pub enum SkipType {
     /// The skip expression is a literal value.
     Literal(usize),
-    /// Non-literal skip expression is not supported.
+    /// Currently only supports expressions that can be folded into constants.
     UnsupportedExpr,
 }
 
-/// Different types of fetch expression in the LIMIT clause.
+/// Different types of fetch expression in Limit plan.
 pub enum FetchType {
     /// The fetch expression is a literal value.
-    /// `Literal(None)` means the fetch expression is not not provided.
+    /// `Literal(None)` means the fetch expression is not provided.
     Literal(Option<usize>),
-    /// Non-literal fetch expression is not supported.
+    /// Currently only supports expressions that can be folded into constants.
     UnsupportedExpr,
 }
 
@@ -2852,7 +2852,7 @@ impl Limit {
                 if s >= 0 {
                     Ok(SkipType::Literal(s as usize))
                 } else {
-                    plan_err!("LIMIT OFFSET must be >=0, '{}' was provided", s)
+                    plan_err!("OFFSET must be >=0, '{}' was provided", s)
                 }
             }
             // `skip = None` is equivalent to `skip = 0`
@@ -2868,7 +2868,7 @@ impl Limit {
                 if s >= 0 {
                     Ok(FetchType::Literal(Some(s as usize)))
                 } else {
-                    plan_err!("LIMIT must be >= 0, '{}' was provided.", s)
+                    plan_err!("LIMIT must be >= 0, '{}' was provided", s)
                 }
             }
             Some(Expr::Literal(ScalarValue::Int64(None))) | None => {

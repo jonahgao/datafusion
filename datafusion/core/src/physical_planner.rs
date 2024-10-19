@@ -799,13 +799,13 @@ impl DefaultPhysicalPlanner {
                 let input = children.one()?;
                 let SkipType::Literal(skip) = limit.get_skip_type()? else {
                     return not_impl_err!(
-                        "Unsupported SKIP expression in LIMIT clause: {:?}",
+                        "Unsupported OFFSET expression: {:?}",
                         limit.skip
                     );
                 };
                 let FetchType::Literal(fetch) = limit.get_fetch_type()? else {
                     return not_impl_err!(
-                        "Unsupported FETCH expression in LIMIT clause: {:?}",
+                        "Unsupported LIMIT expression: {:?}",
                         limit.fetch
                     );
                 };
