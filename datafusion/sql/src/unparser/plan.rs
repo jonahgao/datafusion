@@ -38,7 +38,7 @@ use datafusion_common::{
     Column, DataFusionError, Result, TableReference,
 };
 use datafusion_expr::{
-    expr::Alias, lit, Distinct, Expr, JoinConstraint, JoinType, LogicalPlan,
+    expr::Alias, Distinct, Expr, JoinConstraint, JoinType, LogicalPlan,
     LogicalPlanBuilder, Projection, SortExpr, TableScan,
 };
 use sqlparser::ast::{self, Ident, SetExpr};
@@ -668,7 +668,7 @@ impl Unparser<'_> {
                 }
 
                 if let Some(fetch) = table_scan.fetch {
-                    builder = builder.limit_by_expr(None, Some(lit(fetch as i64)))?;
+                    builder = builder.limit(0, Some(fetch))?;
                 }
 
                 Ok(Some(builder.build()?))
