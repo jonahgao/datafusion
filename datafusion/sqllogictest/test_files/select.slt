@@ -593,6 +593,12 @@ select * from (values(1),(2)) limit (select 1);
 statement error Unsupported OFFSET expression
 select * from (values(1),(2)) offset (select 1);
 
+statement error Unsupported LIMIT expression
+select * from (values(1),(2)) limit 'foo';
+
+statement error Unsupported OFFSET expression
+select * from (values(1),(2)) offset 'bar';
+
 # select limit with basic arithmetic
 query I
 select * from (select 1 a union all select 2) b order by a limit 1+1;
