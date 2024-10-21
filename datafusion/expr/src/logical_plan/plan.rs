@@ -995,8 +995,8 @@ impl LogicalPlan {
                 let new_fetch = fetch.as_ref().and(expr.pop());
                 let input = self.only_input(inputs)?;
                 Ok(LogicalPlan::Limit(Limit {
-                    skip: new_skip,
-                    fetch: new_fetch,
+                    skip: new_skip.map(Box::new),
+                    fetch: new_fetch.map(Box::new),
                     input: Arc::new(input),
                 }))
             }
@@ -2817,10 +2817,10 @@ impl PartialOrd for Extension {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct Limit {
     /// Number of rows to skip before fetch
-    pub skip: Option<Expr>,
+    pub skip: Option<Box<Expr>>,
     /// Maximum number of rows to fetch,
     /// None means fetching all rows
-    pub fetch: Option<Expr>,
+    pub fetch: Option<Box<Expr>>,
     /// The logical plan
     pub input: Arc<LogicalPlan>,
 }
@@ -2845,36 +2845,39 @@ pub enum FetchType {
 impl Limit {
     /// Get the skip type from the limit plan.
     pub fn get_skip_type(&self) -> Result<SkipType> {
-        match self.skip {
-            Some(Expr::Literal(ScalarValue::Int64(s))) => {
-                // `skip = NULL` is equivalent to `skip = 0`
-                let s = s.unwrap_or(0);
-                if s >= 0 {
-                    Ok(SkipType::Literal(s as usize))
-                } else {
-                    plan_err!("OFFSET must be >=0, '{}' was provided", s)
+        match self.skip.as_deref() {
+            Some(expr) => match *expr {
+                Expr::Literal(ScalarValue::Int64(s)) => {
+                    // `skip = NULL` is equivalent to `skip = 0`
+                    let s = s.unwrap_or(0);
+                    if s >= 0 {
+                        Ok(SkipType::Literal(s as usize))
+                    } else {
+                        plan_err!("OFFSET must be >=0, '{}' was provided", s)
+                    }
                 }
-            }
+                _ => Ok(SkipType::UnsupportedExpr),
+            },
             // `skip = None` is equivalent to `skip = 0`
             None => Ok(SkipType::Literal(0)),
-            _ => Ok(SkipType::UnsupportedExpr),
         }
     }
 
     /// Get the fetch type from the limit plan.
     pub fn get_fetch_type(&self) -> Result<FetchType> {
-        match self.fetch {
-            Some(Expr::Literal(ScalarValue::Int64(Some(s)))) => {
-                if s >= 0 {
-                    Ok(FetchType::Literal(Some(s as usize)))
-                } else {
-                    plan_err!("LIMIT must be >= 0, '{}' was provided", s)
+        match self.fetch.as_deref() {
+            Some(expr) => match *expr {
+                Expr::Literal(ScalarValue::Int64(Some(s))) => {
+                    if s >= 0 {
+                        Ok(FetchType::Literal(Some(s as usize)))
+                    } else {
+                        plan_err!("LIMIT must be >= 0, '{}' was provided", s)
+                    }
                 }
-            }
-            Some(Expr::Literal(ScalarValue::Int64(None))) | None => {
-                Ok(FetchType::Literal(None))
-            }
-            _ => Ok(FetchType::UnsupportedExpr),
+                Expr::Literal(ScalarValue::Int64(None)) => Ok(FetchType::Literal(None)),
+                _ => Ok(FetchType::UnsupportedExpr),
+            },
+            None => Ok(FetchType::Literal(None)),
         }
     }
 }

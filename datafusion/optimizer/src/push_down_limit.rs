@@ -76,8 +76,8 @@ impl OptimizerRule for PushDownLimit {
 
             let (skip, fetch) = combine_limit(skip, fetch, child_skip, child_fetch);
             let plan = LogicalPlan::Limit(Limit {
-                skip: Some(lit(skip as i64)),
-                fetch: fetch.map(|f| lit(f as i64)),
+                skip: Some(Box::new(lit(skip as i64))),
+                fetch: fetch.map(|f| Box::new(lit(f as i64))),
                 input: Arc::clone(&child.input),
             });
 
@@ -171,7 +171,7 @@ impl OptimizerRule for PushDownLimit {
                     .map(|child| {
                         LogicalPlan::Limit(Limit {
                             skip: None,
-                            fetch: Some(lit((fetch + skip) as i64)),
+                            fetch: Some(Box::new(lit((fetch + skip) as i64))),
                             input: Arc::new(child.clone()),
                         })
                     })
@@ -211,8 +211,8 @@ impl OptimizerRule for PushDownLimit {
 /// ```
 fn make_limit(skip: usize, fetch: usize, input: Arc<LogicalPlan>) -> LogicalPlan {
     LogicalPlan::Limit(Limit {
-        skip: Some(lit(skip as i64)),
-        fetch: Some(lit(fetch as i64)),
+        skip: Some(Box::new(lit(skip as i64))),
+        fetch: Some(Box::new(lit(fetch as i64))),
         input,
     })
 }

@@ -237,16 +237,16 @@ impl<'a> TypeCoercionRewriter<'a> {
         let empty_schema = DFSchema::empty();
         let new_fetch = limit
             .fetch
-            .map(|expr| expr.cast_to(&DataType::Int64, &empty_schema))
+            .map(|expr| (*expr).cast_to(&DataType::Int64, &empty_schema))
             .transpose()?;
         let new_skip = limit
             .skip
-            .map(|expr| expr.cast_to(&DataType::Int64, &empty_schema))
+            .map(|expr| (*expr).cast_to(&DataType::Int64, &empty_schema))
             .transpose()?;
         Ok(LogicalPlan::Limit(Limit {
             input: limit.input,
-            fetch: new_fetch,
-            skip: new_skip,
+            fetch: new_fetch.map(Box::new),
+            skip: new_skip.map(Box::new),
         }))
     }
 

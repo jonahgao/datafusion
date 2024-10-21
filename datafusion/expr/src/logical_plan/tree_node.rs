@@ -43,6 +43,7 @@ use crate::{
     Repartition, Sort, Subquery, SubqueryAlias, TableScan, Union, Unnest,
     UserDefinedLogicalNode, Values, Window,
 };
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::expr::{Exists, InSubquery};
@@ -515,9 +516,11 @@ impl LogicalPlan {
                 .chain(select_expr.iter())
                 .chain(sort_expr.iter().flatten().map(|sort| &sort.expr))
                 .apply_until_stop(f),
-            LogicalPlan::Limit(Limit { skip, fetch, .. }) => {
-                skip.iter().chain(fetch.iter()).apply_until_stop(f)
-            }
+            LogicalPlan::Limit(Limit { skip, fetch, .. }) => skip
+                .iter()
+                .chain(fetch.iter())
+                .map(|e| e.deref())
+                .apply_until_stop(f),
             // plans without expressions
             LogicalPlan::EmptyRelation(_)
             | LogicalPlan::RecursiveQuery(_)
@@ -729,6 +732,8 @@ impl LogicalPlan {
                 }))
             }),
             LogicalPlan::Limit(Limit { skip, fetch, input }) => {
+                let skip = skip.map(|e| *e);
+                let fetch = fetch.map(|e| *e);
                 map_until_stop_and_collect!(
                     skip.map_or(Ok::<_, DataFusionError>(Transformed::no(None)), |e| {
                         Ok(f(e)?.update_data(Some))
@@ -739,7 +744,11 @@ impl LogicalPlan {
                     })
                 )?
                 .update_data(|(skip, fetch)| {
-                    LogicalPlan::Limit(Limit { skip, fetch, input })
+                    LogicalPlan::Limit(Limit {
+                        skip: skip.map(Box::new),
+                        fetch: fetch.map(Box::new),
+                        input,
+                    })
                 })
             }
             // plans without expressions

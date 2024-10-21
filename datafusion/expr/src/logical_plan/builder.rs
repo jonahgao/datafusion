@@ -445,8 +445,8 @@ impl LogicalPlanBuilder {
     /// Similar to `limit` but uses expressions for `skip` and `fetch`
     pub fn limit_by_expr(self, skip: Option<Expr>, fetch: Option<Expr>) -> Result<Self> {
         Ok(Self::new(LogicalPlan::Limit(Limit {
-            skip,
-            fetch,
+            skip: skip.map(Box::new),
+            fetch: fetch.map(Box::new),
             input: self.plan,
         })))
     }
