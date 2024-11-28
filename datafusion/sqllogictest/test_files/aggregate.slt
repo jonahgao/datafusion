@@ -437,7 +437,7 @@ SELECT var_pop(c2) FROM aggregate_test_100
 query R
 SELECT var_pop(c6) FROM aggregate_test_100
 ----
-26156334342021890000000000000000000000
+2615633434202189e+22
 
 # csv_query_variance_3
 query R
