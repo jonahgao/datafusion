@@ -317,7 +317,7 @@ fn cell_to_string(row: &Row, column: &Column, idx: usize) -> String {
         Type::INT2 => make_string!(row, idx, i16),
         Type::INT4 => make_string!(row, idx, i32),
         Type::INT8 => make_string!(row, idx, i64),
-        Type::NUMERIC => make_string!(row, idx, Decimal, decimal_to_str),
+        Type::NUMERIC => make_string!(row, idx, Decimal, pg_decimal_to_str),
         Type::DATE => make_string!(row, idx, NaiveDate),
         Type::TIME => make_string!(row, idx, NaiveTime),
         Type::TIMESTAMP => {
@@ -330,8 +330,8 @@ fn cell_to_string(row: &Row, column: &Column, idx: usize) -> String {
         Type::BPCHAR | Type::VARCHAR | Type::TEXT => {
             make_string!(row, idx, &str, varchar_to_str)
         }
-        Type::FLOAT4 => make_string!(row, idx, f32, f32_to_str),
-        Type::FLOAT8 => make_string!(row, idx, f64, f64_to_str),
+        Type::FLOAT4 => make_string!(row, idx, f32, float_to_str),
+        Type::FLOAT8 => make_string!(row, idx, f64, float_to_str),
         Type::REGTYPE => make_string!(row, idx, PgRegtype),
         _ => unimplemented!("Unsupported type: {}", column.type_().name()),
     }

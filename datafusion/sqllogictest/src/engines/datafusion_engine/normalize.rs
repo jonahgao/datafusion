@@ -17,7 +17,7 @@
 
 use crate::engines::output::DFColumnType;
 use arrow::array::{Array, AsArray};
-use arrow::datatypes::Fields;
+use arrow::datatypes::{Decimal128Type, Decimal256Type, Fields};
 use arrow::util::display::ArrayFormatter;
 use arrow::{array, array::ArrayRef, datatypes::DataType, record_batch::RecordBatch};
 use datafusion_common::format::DEFAULT_FORMAT_OPTIONS;
@@ -205,21 +205,25 @@ pub fn cell_to_string(col: &ArrayRef, row: usize) -> Result<String> {
                 Ok(bool_to_str(get_row_value!(array::BooleanArray, col, row)))
             }
             DataType::Float16 => {
-                Ok(f16_to_str(get_row_value!(array::Float16Array, col, row)))
+                Ok(float_to_str(get_row_value!(array::Float16Array, col, row)))
             }
             DataType::Float32 => {
-                Ok(f32_to_str(get_row_value!(array::Float32Array, col, row)))
+                Ok(float_to_str(get_row_value!(array::Float32Array, col, row)))
             }
             DataType::Float64 => {
-                Ok(f64_to_str(get_row_value!(array::Float64Array, col, row)))
+                Ok(float_to_str(get_row_value!(array::Float64Array, col, row)))
             }
             DataType::Decimal128(precision, scale) => {
                 let value = get_row_value!(array::Decimal128Array, col, row);
-                Ok(i128_to_str(value, precision, scale))
+                Ok(arrow_decimal_to_str::<Decimal128Type>(
+                    value, precision, scale,
+                ))
             }
             DataType::Decimal256(precision, scale) => {
                 let value = get_row_value!(array::Decimal256Array, col, row);
-                Ok(i256_to_str(value, precision, scale))
+                Ok(arrow_decimal_to_str::<Decimal256Type>(
+                    value, precision, scale,
+                ))
             }
             DataType::LargeUtf8 => Ok(varchar_to_str(get_row_value!(
                 array::LargeStringArray,
