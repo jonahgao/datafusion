@@ -344,10 +344,10 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     }
 
     /// Validate the schema provides all of the columns referenced in the expressions.
-    pub(crate) fn validate_schema_satisfies_exprs(
+    pub(crate) fn validate_schema_satisfies_exprs<'b>(
         &self,
         schema: &DFSchema,
-        exprs: &[Expr],
+        exprs: impl IntoIterator<Item = &'b Expr>,
     ) -> Result<()> {
         find_column_exprs(exprs)
             .iter()

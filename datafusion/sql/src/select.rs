@@ -29,7 +29,7 @@ use datafusion_common::{not_impl_err, plan_err, Result};
 use datafusion_common::{RecursionUnnestOption, UnnestOptions};
 use datafusion_expr::expr::{Alias, PlannedReplaceSelectItem, WildcardOptions};
 use datafusion_expr::expr_rewriter::{
-    normalize_col, normalize_col_with_schemas_and_ambiguity_check, normalize_sorts,
+    normalize_col, normalize_col_with_schemas_and_ambiguity_check,
 };
 use datafusion_expr::utils::{
     expr_as_column_expr, expr_to_columns, find_aggregate_exprs, find_window_exprs,
@@ -97,17 +97,6 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         // See https://github.com/apache/datafusion/issues/9162
         let mut combined_schema = base_plan.schema().as_ref().clone();
         combined_schema.merge(projected_plan.schema());
-
-        // Order-by expressions prioritize referencing columns from the select list,
-        // then from the FROM clause.
-        let order_by_rex = self.order_by_to_sort_expr(
-            order_by,
-            projected_plan.schema().as_ref(),
-            planner_context,
-            true,
-            Some(base_plan.schema().as_ref()),
-        )?;
-        let order_by_rex = normalize_sorts(order_by_rex, &projected_plan)?;
 
         // This alias map is resolved and looked up in both having exprs and group by exprs
         let alias_map = extract_aliases(&select_exprs);
@@ -235,6 +224,20 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
 
         // Try processing unnest expression or do the final projection
         let plan = self.try_process_unnest(plan, select_exprs_post_aggr)?;
+
+        // Order-by expressions prioritize referencing columns from the select list,
+        // then from the FROM clause if no group by or aggregation is present.
+        let order_by_rex = self.order_by_to_sort_expr(
+            order_by,
+            plan.schema(),
+            planner_context,
+            true,
+            if group_by_exprs.is_empty() {
+                Some(base_plan.schema().as_ref())
+            } else {
+                None
+            },
+        )?;
 
         // Process distinct clause
         let plan = match select.distinct {

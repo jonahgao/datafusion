@@ -59,7 +59,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             None => input_schema,
         };
 
-        let mut expr_vec = vec![];
+        let mut sort_exprs = vec![];
         for e in exprs {
             let OrderByExpr {
                 asc,
@@ -99,7 +99,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                 }
             };
             let asc = asc.unwrap_or(true);
-            expr_vec.push(Sort::new(
+            sort_exprs.push(Sort::new(
                 expr,
                 asc,
                 // When asc is true, by default nulls last to be consistent with postgres
@@ -107,6 +107,11 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                 nulls_first.unwrap_or(!asc),
             ))
         }
-        Ok(expr_vec)
+
+        // Ensure that the order by expressions can only reference order_by_schema
+        let order_by_exprs = sort_exprs.iter().map(|sort_expr| &sort_expr.expr);
+        self.validate_schema_satisfies_exprs(order_by_schema, order_by_exprs)?;
+
+        Ok(sort_exprs)
     }
 }

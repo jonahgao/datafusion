@@ -897,9 +897,9 @@ pub fn columnize_expr(e: Expr, input: &LogicalPlan) -> Result<Expr> {
 
 /// Collect all deeply nested `Expr::Column`'s. They are returned in order of
 /// appearance (depth first), and may contain duplicates.
-pub fn find_column_exprs(exprs: &[Expr]) -> Vec<Expr> {
+pub fn find_column_exprs<'a>(exprs: impl IntoIterator<Item = &'a Expr>) -> Vec<Expr> {
     exprs
-        .iter()
+        .into_iter()
         .flat_map(find_columns_referenced_by_expr)
         .map(Expr::Column)
         .collect()
