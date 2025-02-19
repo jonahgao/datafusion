@@ -16,11 +16,15 @@
 // under the License.
 
 use crate::planner::{ContextProvider, PlannerContext, SqlToRel};
+use datafusion_common::tree_node::{
+    Transformed, TransformedResult, TreeNode, TreeNodeRecursion,
+};
 use datafusion_common::{
-    not_impl_err, plan_datafusion_err, plan_err, Column, DFSchema, Result,
+    not_impl_err, plan_datafusion_err, plan_err, Column, DFSchema, DFSchemaRef, Result,
 };
 use datafusion_expr::expr::Sort;
 use datafusion_expr::{Expr, SortExpr};
+use indexmap::IndexSet;
 use sqlparser::ast::{Expr as SQLExpr, OrderByExpr, Value};
 
 impl<S: ContextProvider> SqlToRel<'_, S> {
@@ -108,5 +112,55 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             ))
         }
         Ok(expr_vec)
+    }
+
+    /// Add missing ORDER BY expressions to the SELECT list.
+    pub(crate) fn add_missing_order_by_exprs(
+        select_exprs: &mut Vec<Expr>,
+        schema: &DFSchemaRef,
+        distinct: bool,
+        order_by: &mut Vec<Sort>,
+    ) -> Result<bool> {
+        let mut missing_exprs: IndexSet<Expr> = IndexSet::new();
+        let mut rewrite = |expr: Expr| {
+            if select_exprs.contains(&expr) {
+                return Ok(Transformed::new(expr, false, TreeNodeRecursion::Jump));
+            }
+            match expr {
+                Expr::AggregateFunction(_) | Expr::WindowFunction(_) => {
+                    let replaced = Expr::Column(Column::new_unqualified(
+                        expr.schema_name().to_string(),
+                    ));
+                    missing_exprs.insert(expr);
+                    Ok(Transformed::new(replaced, true, TreeNodeRecursion::Jump))
+                }
+                Expr::Column(ref c) => {
+                    if !schema.has_column(&c) {
+                        missing_exprs.insert(Expr::Column(c.clone()));
+                    }
+                    Ok(Transformed::new(expr, false, TreeNodeRecursion::Jump))
+                }
+                _ => Ok(Transformed::no(expr)),
+            }
+        };
+        for sort in order_by.iter_mut() {
+            sort.expr = sort
+                .expr
+                .clone() // TODO: remove clone
+                .transform_down(&mut rewrite)
+                .data()?;
+        }
+        println!("missing_exprs: {:?}", missing_exprs);
+        if !missing_exprs.is_empty() {
+            if distinct {
+                return plan_err!(
+                    "ORDER BY expression must appear in the select list when using DISTINCT"
+                );
+            }
+            select_exprs.extend(missing_exprs);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }

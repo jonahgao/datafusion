@@ -25,9 +25,9 @@ use crate::utils::{
 };
 
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
-use datafusion_common::{not_impl_err, plan_err, Column, Result};
+use datafusion_common::{not_impl_err, plan_err, Column, DFSchemaRef, Result};
 use datafusion_common::{RecursionUnnestOption, UnnestOptions};
-use datafusion_expr::expr::{Alias, PlannedReplaceSelectItem, WildcardOptions};
+use datafusion_expr::expr::{Alias, PlannedReplaceSelectItem, Sort, WildcardOptions};
 use datafusion_expr::expr_rewriter::{
     normalize_col, normalize_col_with_schemas_and_ambiguity_check, normalize_sorts,
 };
@@ -82,7 +82,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         check_conflicting_windows(&select.named_window)?;
         match_window_definitions(&mut select.projection, &select.named_window)?;
         // Process the SELECT expressions
-        let select_exprs = self.prepare_select_exprs(
+        let mut select_exprs = self.prepare_select_exprs(
             &base_plan,
             select.projection,
             empty_from,
@@ -107,7 +107,13 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             true,
             Some(base_plan.schema().as_ref()),
         )?;
-        let order_by_rex = normalize_sorts(order_by_rex, &projected_plan)?;
+        let mut order_by_rex = normalize_sorts(order_by_rex, &projected_plan)?;
+        let added = Self::add_missing_order_by_exprs(
+            &mut select_exprs,
+            projected_plan.schema(),
+            matches!(select.distinct, Some(Distinct::Distinct)),
+            &mut order_by_rex,
+        )?;
 
         // This alias map is resolved and looked up in both having exprs and group by exprs
         let alias_map = extract_aliases(&select_exprs);
@@ -207,22 +213,6 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                 None => (base_plan.clone(), select_exprs.clone(), having_expr_opt)
             }
         };
-        let missing_cols =
-            Self::calc_missing_columns(&select_exprs_post_aggr, &order_by_rex)?;
-
-        // do ambiguous_distinct_check if select in distinct case
-        if !missing_cols.is_empty() && select.distinct.is_some() {
-            let missing_col_names = missing_cols
-                .iter()
-                .map(|col| col.flat_name())
-                .collect::<String>();
-
-            return plan_err!("For SELECT DISTINCT, ORDER BY expressions {missing_col_names} must appear in select list");
-        }
-        let add_missing_cols = !missing_cols.is_empty();
-        missing_cols
-            .into_iter()
-            .for_each(|column| select_exprs_post_aggr.push(Expr::Column(column)));
 
         let plan = if let Some(having_expr_post_aggr) = having_expr_post_aggr {
             LogicalPlanBuilder::from(plan)
@@ -301,41 +291,21 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         };
 
         let plan = self.order_by(plan, order_by_rex)?;
+        // println!("plan: {}", plan.display_indent());
         // if add missing columns, we MUST remove unused columns in project
-        if add_missing_cols {
+        if added {
             LogicalPlanBuilder::from(plan)
-                .project(select_exprs)?
+                .project(
+                    projected_plan
+                        .schema()
+                        .columns()
+                        .into_iter()
+                        .map(Expr::Column),
+                )?
                 .build()
         } else {
             Ok(plan)
         }
-    }
-
-    fn calc_missing_columns(
-        exprs: &[Expr],
-        order_by: &[datafusion_expr::expr::Sort],
-    ) -> Result<IndexSet<Column>> {
-        let mut expr_columns: IndexSet<&Column> = IndexSet::new();
-        exprs.iter().for_each(|expr| {
-            expr_columns.extend(expr.column_refs());
-        });
-
-        let mut missing_cols: IndexSet<Column> = IndexSet::new();
-        order_by.iter().try_for_each::<_, Result<()>>(|sort| {
-            let columns = sort.expr.column_refs();
-
-            missing_cols.extend(
-                columns
-                    .clone()
-                    .into_iter()
-                    .filter(|c| !expr_columns.contains(c))
-                    .cloned(),
-            );
-
-            Ok(())
-        })?;
-
-        Ok(missing_cols)
     }
 
     /// Try converting Expr(Unnest(Expr)) to Projection/Unnest/Projection
