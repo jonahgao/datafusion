@@ -159,16 +159,12 @@ impl AggregateUDFImpl for Count {
 
         let mut schema_name = String::new();
 
-        if is_count_wildcard(args) {
-            schema_name.write_str("count(*)")?;
-        } else {
-            schema_name.write_fmt(format_args!(
-                "{}({}{})",
-                self.name(),
-                if *distinct { "DISTINCT " } else { "" },
-                schema_name_from_exprs(args)?
-            ))?;
-        }
+        schema_name.write_fmt(format_args!(
+            "{}({}{})",
+            self.name(),
+            if *distinct { "DISTINCT " } else { "" },
+            schema_name_from_exprs(args)?
+        ))?;
 
         if let Some(null_treatment) = null_treatment {
             schema_name.write_fmt(format_args!(" {}", null_treatment))?;
