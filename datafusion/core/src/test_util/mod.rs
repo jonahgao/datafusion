@@ -27,9 +27,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use crate::catalog::{TableProvider, TableProviderFactory};
 use crate::dataframe::DataFrame;
@@ -37,21 +35,17 @@ use crate::datasource::stream::{FileStreamProvider, StreamConfig, StreamTable};
 use crate::datasource::{empty::EmptyTable, provider_as_source};
 use crate::error::Result;
 use crate::logical_expr::{LogicalPlanBuilder, UNNAMED_TABLE};
-use crate::physical_plan::{ExecutionPlan, RecordBatchStream, SendableRecordBatchStream};
+use crate::physical_plan::ExecutionPlan;
 use crate::prelude::{CsvReadOptions, SessionContext};
 
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
 use datafusion_catalog::Session;
 use datafusion_common::TableReference;
-use datafusion_expr::utils::COUNT_STAR_EXPANSION;
 use datafusion_expr::{CreateExternalTable, Expr, SortExpr, TableType};
-use datafusion_functions_aggregate::count::count_udaf;
-use datafusion_physical_expr::aggregate::{AggregateExprBuilder, AggregateFunctionExpr};
-use datafusion_physical_expr::{expressions, PhysicalExpr};
 
 use async_trait::async_trait;
-use futures::Stream;
+
 use tempfile::TempDir;
 // backwards compatibility
 #[cfg(feature = "parquet")]
@@ -239,94 +233,4 @@ pub fn register_unbounded_file_with_ordering(
     // Register table:
     ctx.register_table(table_name, Arc::new(StreamTable::new(Arc::new(config))))?;
     Ok(())
-}
-
-struct BoundedStream {
-    limit: usize,
-    count: usize,
-    batch: RecordBatch,
-}
-
-impl Stream for BoundedStream {
-    type Item = Result<RecordBatch>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        if self.count >= self.limit {
-            return Poll::Ready(None);
-        }
-        self.count += 1;
-        Poll::Ready(Some(Ok(self.batch.clone())))
-    }
-}
-
-impl RecordBatchStream for BoundedStream {
-    fn schema(&self) -> SchemaRef {
-        self.batch.schema()
-    }
-}
-
-/// Creates an bounded stream for testing purposes.
-pub fn bounded_stream(batch: RecordBatch, limit: usize) -> SendableRecordBatchStream {
-    Box::pin(BoundedStream {
-        count: 0,
-        limit,
-        batch,
-    })
-}
-
-/// Describe the type of aggregate being tested
-pub enum TestAggregate {
-    /// Testing COUNT(*) type aggregates
-    CountStar,
-
-    /// Testing for COUNT(column) aggregate
-    ColumnA(Arc<Schema>),
-}
-
-impl TestAggregate {
-    /// Create a new COUNT(*) aggregate
-    pub fn new_count_star() -> Self {
-        Self::CountStar
-    }
-
-    /// Create a new COUNT(column) aggregate
-    pub fn new_count_column(schema: &Arc<Schema>) -> Self {
-        Self::ColumnA(Arc::clone(schema))
-    }
-
-    /// Return appropriate expr depending if COUNT is for col or table (*)
-    pub fn count_expr(&self, schema: &Schema) -> AggregateFunctionExpr {
-        AggregateExprBuilder::new(count_udaf(), vec![self.column()])
-            .schema(Arc::new(schema.clone()))
-            .alias(self.column_name())
-            .build()
-            .unwrap()
-    }
-
-    /// what argument would this aggregate need in the plan?
-    fn column(&self) -> Arc<dyn PhysicalExpr> {
-        match self {
-            Self::CountStar => expressions::lit(COUNT_STAR_EXPANSION),
-            Self::ColumnA(s) => expressions::col("a", s).unwrap(),
-        }
-    }
-
-    /// What name would this aggregate produce in a plan?
-    pub fn column_name(&self) -> &'static str {
-        match self {
-            Self::CountStar => "COUNT(*)",
-            Self::ColumnA(_) => "COUNT(a)",
-        }
-    }
-
-    /// What is the expected count?
-    pub fn expected_count(&self) -> i64 {
-        match self {
-            TestAggregate::CountStar => 3,
-            TestAggregate::ColumnA(_) => 2,
-        }
-    }
 }

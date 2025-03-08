@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::datasource::physical_plan::plan_to_csv;
 use datafusion_common::TableReference;
+use datafusion_datasource_csv::source::plan_to_csv;
 use std::sync::Arc;
 
 use super::super::options::{CsvReadOptions, ReadOptions};
@@ -61,6 +61,8 @@ impl SessionContext {
     ) -> Result<()> {
         let listing_options = options
             .to_listing_options(&self.copied_config(), self.copied_table_options());
+
+        self.register_type_check(table_path.as_ref(), &listing_options.file_extension)?;
 
         self.register_listing_table(
             table_ref,

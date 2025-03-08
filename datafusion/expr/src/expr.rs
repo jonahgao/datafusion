@@ -25,7 +25,6 @@ use std::sync::Arc;
 
 use crate::expr_fn::binary_expr;
 use crate::logical_plan::Subquery;
-use crate::utils::expr_to_columns;
 use crate::Volatility;
 use crate::{udaf, ExprSchemable, Operator, Signature, WindowFrame, WindowUDF};
 
@@ -35,7 +34,7 @@ use datafusion_common::tree_node::{
     Transformed, TransformedResult, TreeNode, TreeNodeContainer, TreeNodeRecursion,
 };
 use datafusion_common::{
-    plan_err, Column, DFSchema, HashMap, Result, ScalarValue, TableReference,
+    Column, DFSchema, HashMap, Result, ScalarValue, Spans, TableReference,
 };
 use datafusion_functions_window_common::field::WindowUDFFieldArgs;
 use sqlparser::ast::{
@@ -311,6 +310,10 @@ pub enum Expr {
     ///
     /// This expr has to be resolved to a list of columns before translating logical
     /// plan into physical plan.
+    #[deprecated(
+        since = "46.0.0",
+        note = "A wildcard needs to be resolved to concrete expressions when constructing the logical plan. See https://github.com/apache/datafusion/issues/7765"
+    )]
     Wildcard {
         qualifier: Option<TableReference>,
         options: Box<WildcardOptions>,
@@ -696,7 +699,11 @@ impl<'a> TreeNodeContainer<'a, Expr> for Sort {
 pub struct AggregateFunction {
     /// Name of the function
     pub func: Arc<crate::AggregateUDF>,
-    /// List of expressions to feed to the functions as arguments
+    pub params: AggregateFunctionParams,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Hash, Debug)]
+pub struct AggregateFunctionParams {
     pub args: Vec<Expr>,
     /// Whether this is a DISTINCT aggregation or not
     pub distinct: bool,
@@ -719,11 +726,13 @@ impl AggregateFunction {
     ) -> Self {
         Self {
             func,
-            args,
-            distinct,
-            filter,
-            order_by,
-            null_treatment,
+            params: AggregateFunctionParams {
+                args,
+                distinct,
+                filter,
+                order_by,
+                null_treatment,
+            },
         }
     }
 }
@@ -813,6 +822,11 @@ impl From<Arc<WindowUDF>> for WindowFunctionDefinition {
 pub struct WindowFunction {
     /// Name of the function
     pub fun: WindowFunctionDefinition,
+    pub params: WindowFunctionParams,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Hash, Debug)]
+pub struct WindowFunctionParams {
     /// List of expressions to feed to the functions as arguments
     pub args: Vec<Expr>,
     /// List of partition by expressions
@@ -831,11 +845,13 @@ impl WindowFunction {
     pub fn new(fun: impl Into<WindowFunctionDefinition>, args: Vec<Expr>) -> Self {
         Self {
             fun: fun.into(),
-            args,
-            partition_by: Vec::default(),
-            order_by: Vec::default(),
-            window_frame: WindowFrame::new(None),
-            null_treatment: None,
+            params: WindowFunctionParams {
+                args,
+                partition_by: Vec::default(),
+                order_by: Vec::default(),
+                window_frame: WindowFrame::new(None),
+                null_treatment: None,
+            },
         }
     }
 }
@@ -1073,11 +1089,6 @@ impl PlannedReplaceSelectItem {
 }
 
 impl Expr {
-    #[deprecated(since = "40.0.0", note = "use schema_name instead")]
-    pub fn display_name(&self) -> Result<String> {
-        Ok(self.schema_name().to_string())
-    }
-
     /// The name of the column (field) that this `Expr` will produce.
     ///
     /// For example, for a projection (e.g. `SELECT <expr>`) the resulting arrow
@@ -1111,7 +1122,11 @@ impl Expr {
     /// output schema. We can use this qualified name to reference the field.
     pub fn qualified_name(&self) -> (Option<TableReference>, String) {
         match self {
-            Expr::Column(Column { relation, name }) => (relation.clone(), name.clone()),
+            Expr::Column(Column {
+                relation,
+                name,
+                spans: _,
+            }) => (relation.clone(), name.clone()),
             Expr::Alias(Alias { relation, name, .. }) => (relation.clone(), name.clone()),
             _ => (None, self.schema_name().to_string()),
         }
@@ -1158,6 +1173,7 @@ impl Expr {
             Expr::ScalarVariable(..) => "ScalarVariable",
             Expr::TryCast { .. } => "TryCast",
             Expr::WindowFunction { .. } => "WindowFunction",
+            #[expect(deprecated)]
             Expr::Wildcard { .. } => "Wildcard",
             Expr::Unnest { .. } => "Unnest",
         }
@@ -1422,15 +1438,6 @@ impl Expr {
             Box::new(high),
         ))
     }
-
-    #[deprecated(since = "39.0.0", note = "use try_as_col instead")]
-    pub fn try_into_col(&self) -> Result<Column> {
-        match self {
-            Expr::Column(it) => Ok(it.clone()),
-            _ => plan_err!("Could not coerce '{self}' into Column!"),
-        }
-    }
-
     /// Return a reference to the inner `Column` if any
     ///
     /// returns `None` if the expression is not a `Column`
@@ -1471,15 +1478,6 @@ impl Expr {
             },
             _ => None,
         }
-    }
-
-    /// Return all referenced columns of this expression.
-    #[deprecated(since = "40.0.0", note = "use Expr::column_refs instead")]
-    pub fn to_columns(&self) -> Result<HashSet<Column>> {
-        let mut using_columns = HashSet::new();
-        expr_to_columns(self, &mut using_columns)?;
-
-        Ok(using_columns)
     }
 
     /// Return all references to columns in this expression.
@@ -1631,6 +1629,8 @@ impl Expr {
             // Use explicit pattern match instead of a default
             // implementation, so that in the future if someone adds
             // new Expr types, they will check here as well
+            // TODO: remove the next line after `Expr::Wildcard` is removed
+            #[expect(deprecated)]
             Expr::AggregateFunction(..)
             | Expr::Alias(..)
             | Expr::Between(..)
@@ -1661,6 +1661,16 @@ impl Expr {
             | Expr::WindowFunction(..)
             | Expr::Literal(..)
             | Expr::Placeholder(..) => false,
+        }
+    }
+
+    /// Returns a reference to the set of locations in the SQL query where this
+    /// expression appears, if known. [`None`] is returned if the expression
+    /// type doesn't support tracking locations yet.
+    pub fn spans(&self) -> Option<&Spans> {
+        match self {
+            Expr::Column(col) => Some(&col.spans),
+            _ => None,
         }
     }
 }
@@ -1850,19 +1860,25 @@ impl NormalizeEq for Expr {
             (
                 Expr::AggregateFunction(AggregateFunction {
                     func: self_func,
-                    args: self_args,
-                    distinct: self_distinct,
-                    filter: self_filter,
-                    order_by: self_order_by,
-                    null_treatment: self_null_treatment,
+                    params:
+                        AggregateFunctionParams {
+                            args: self_args,
+                            distinct: self_distinct,
+                            filter: self_filter,
+                            order_by: self_order_by,
+                            null_treatment: self_null_treatment,
+                        },
                 }),
                 Expr::AggregateFunction(AggregateFunction {
                     func: other_func,
-                    args: other_args,
-                    distinct: other_distinct,
-                    filter: other_filter,
-                    order_by: other_order_by,
-                    null_treatment: other_null_treatment,
+                    params:
+                        AggregateFunctionParams {
+                            args: other_args,
+                            distinct: other_distinct,
+                            filter: other_filter,
+                            order_by: other_order_by,
+                            null_treatment: other_null_treatment,
+                        },
                 }),
             ) => {
                 self_func.name() == other_func.name()
@@ -1896,21 +1912,30 @@ impl NormalizeEq for Expr {
             (
                 Expr::WindowFunction(WindowFunction {
                     fun: self_fun,
-                    args: self_args,
-                    partition_by: self_partition_by,
-                    order_by: self_order_by,
-                    window_frame: self_window_frame,
-                    null_treatment: self_null_treatment,
+                    params: self_params,
                 }),
                 Expr::WindowFunction(WindowFunction {
                     fun: other_fun,
-                    args: other_args,
-                    partition_by: other_partition_by,
-                    order_by: other_order_by,
-                    window_frame: other_window_frame,
-                    null_treatment: other_null_treatment,
+                    params: other_params,
                 }),
             ) => {
+                let (
+                    WindowFunctionParams {
+                        args: self_args,
+                        window_frame: self_window_frame,
+                        partition_by: self_partition_by,
+                        order_by: self_order_by,
+                        null_treatment: self_null_treatment,
+                    },
+                    WindowFunctionParams {
+                        args: other_args,
+                        window_frame: other_window_frame,
+                        partition_by: other_partition_by,
+                        order_by: other_order_by,
+                        null_treatment: other_null_treatment,
+                    },
+                ) = (self_params, other_params);
+
                 self_fun.name() == other_fun.name()
                     && self_window_frame == other_window_frame
                     && self_null_treatment == other_null_treatment
@@ -2140,24 +2165,27 @@ impl HashNode for Expr {
             }
             Expr::AggregateFunction(AggregateFunction {
                 func,
-                args: _args,
-                distinct,
-                filter: _filter,
-                order_by: _order_by,
-                null_treatment,
+                params:
+                    AggregateFunctionParams {
+                        args: _args,
+                        distinct,
+                        filter: _,
+                        order_by: _,
+                        null_treatment,
+                    },
             }) => {
                 func.hash(state);
                 distinct.hash(state);
                 null_treatment.hash(state);
             }
-            Expr::WindowFunction(WindowFunction {
-                fun,
-                args: _args,
-                partition_by: _partition_by,
-                order_by: _order_by,
-                window_frame,
-                null_treatment,
-            }) => {
+            Expr::WindowFunction(WindowFunction { fun, params }) => {
+                let WindowFunctionParams {
+                    args: _args,
+                    partition_by: _,
+                    order_by: _,
+                    window_frame,
+                    null_treatment,
+                } = params;
                 fun.hash(state);
                 window_frame.hash(state);
                 null_treatment.hash(state);
@@ -2184,6 +2212,7 @@ impl HashNode for Expr {
             Expr::ScalarSubquery(subquery) => {
                 subquery.hash(state);
             }
+            #[expect(deprecated)]
             Expr::Wildcard { qualifier, options } => {
                 qualifier.hash(state);
                 options.hash(state);
@@ -2243,44 +2272,30 @@ impl Display for SchemaDisplay<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
             // The same as Display
+            // TODO: remove the next line after `Expr::Wildcard` is removed
+            #[expect(deprecated)]
             Expr::Column(_)
             | Expr::Literal(_)
             | Expr::ScalarVariable(..)
             | Expr::OuterReferenceColumn(..)
             | Expr::Placeholder(_)
             | Expr::Wildcard { .. } => write!(f, "{}", self.0),
-
-            Expr::AggregateFunction(AggregateFunction {
-                func,
-                args,
-                distinct,
-                filter,
-                order_by,
-                null_treatment,
-            }) => {
-                write!(
-                    f,
-                    "{}({}{})",
-                    func.name(),
-                    if *distinct { "DISTINCT " } else { "" },
-                    schema_name_from_exprs_comma_separated_without_space(args)?
-                )?;
-
-                if let Some(null_treatment) = null_treatment {
-                    write!(f, " {}", null_treatment)?;
+            Expr::AggregateFunction(AggregateFunction { func, params }) => {
+                match func.schema_name(params) {
+                    Ok(name) => {
+                        write!(f, "{name}")
+                    }
+                    Err(e) => {
+                        write!(f, "got error from schema_name {}", e)
+                    }
                 }
-
-                if let Some(filter) = filter {
-                    write!(f, " FILTER (WHERE {filter})")?;
-                };
-
-                if let Some(order_by) = order_by {
-                    write!(f, " ORDER BY [{}]", schema_name_from_sorts(order_by)?)?;
-                };
-
-                Ok(())
             }
             // Expr is not shown since it is aliased
+            Expr::Alias(Alias {
+                name,
+                relation: Some(relation),
+                ..
+            }) => write!(f, "{relation}.{name}"),
             Expr::Alias(Alias { name, .. }) => write!(f, "{name}"),
             Expr::Between(Between {
                 expr,
@@ -2453,39 +2468,52 @@ impl Display for SchemaDisplay<'_> {
 
                 Ok(())
             }
-            Expr::WindowFunction(WindowFunction {
-                fun,
-                args,
-                partition_by,
-                order_by,
-                window_frame,
-                null_treatment,
-            }) => {
-                write!(
-                    f,
-                    "{}({})",
-                    fun,
-                    schema_name_from_exprs_comma_separated_without_space(args)?
-                )?;
-
-                if let Some(null_treatment) = null_treatment {
-                    write!(f, " {}", null_treatment)?;
+            Expr::WindowFunction(WindowFunction { fun, params }) => match fun {
+                WindowFunctionDefinition::AggregateUDF(fun) => {
+                    match fun.window_function_schema_name(params) {
+                        Ok(name) => {
+                            write!(f, "{name}")
+                        }
+                        Err(e) => {
+                            write!(f, "got error from window_function_schema_name {}", e)
+                        }
+                    }
                 }
+                _ => {
+                    let WindowFunctionParams {
+                        args,
+                        partition_by,
+                        order_by,
+                        window_frame,
+                        null_treatment,
+                    } = params;
 
-                if !partition_by.is_empty() {
                     write!(
                         f,
-                        " PARTITION BY [{}]",
-                        schema_name_from_exprs(partition_by)?
+                        "{}({})",
+                        fun,
+                        schema_name_from_exprs_comma_separated_without_space(args)?
                     )?;
+
+                    if let Some(null_treatment) = null_treatment {
+                        write!(f, " {}", null_treatment)?;
+                    }
+
+                    if !partition_by.is_empty() {
+                        write!(
+                            f,
+                            " PARTITION BY [{}]",
+                            schema_name_from_exprs(partition_by)?
+                        )?;
+                    }
+
+                    if !order_by.is_empty() {
+                        write!(f, " ORDER BY [{}]", schema_name_from_sorts(order_by)?)?;
+                    };
+
+                    write!(f, " {window_frame}")
                 }
-
-                if !order_by.is_empty() {
-                    write!(f, " ORDER BY [{}]", schema_name_from_sorts(order_by)?)?;
-                };
-
-                write!(f, " {window_frame}")
-            }
+            },
         }
     }
 }
@@ -2607,53 +2635,56 @@ impl Display for Expr {
             // Expr::ScalarFunction(ScalarFunction { func, args }) => {
             //     write!(f, "{}", func.display_name(args).unwrap())
             // }
-            Expr::WindowFunction(WindowFunction {
-                fun,
-                args,
-                partition_by,
-                order_by,
-                window_frame,
-                null_treatment,
-            }) => {
-                fmt_function(f, &fun.to_string(), false, args, true)?;
+            Expr::WindowFunction(WindowFunction { fun, params }) => match fun {
+                WindowFunctionDefinition::AggregateUDF(fun) => {
+                    match fun.window_function_display_name(params) {
+                        Ok(name) => {
+                            write!(f, "{}", name)
+                        }
+                        Err(e) => {
+                            write!(f, "got error from window_function_display_name {}", e)
+                        }
+                    }
+                }
+                WindowFunctionDefinition::WindowUDF(fun) => {
+                    let WindowFunctionParams {
+                        args,
+                        partition_by,
+                        order_by,
+                        window_frame,
+                        null_treatment,
+                    } = params;
 
-                if let Some(nt) = null_treatment {
-                    write!(f, "{}", nt)?;
-                }
+                    fmt_function(f, &fun.to_string(), false, args, true)?;
 
-                if !partition_by.is_empty() {
-                    write!(f, " PARTITION BY [{}]", expr_vec_fmt!(partition_by))?;
+                    if let Some(nt) = null_treatment {
+                        write!(f, "{}", nt)?;
+                    }
+
+                    if !partition_by.is_empty() {
+                        write!(f, " PARTITION BY [{}]", expr_vec_fmt!(partition_by))?;
+                    }
+                    if !order_by.is_empty() {
+                        write!(f, " ORDER BY [{}]", expr_vec_fmt!(order_by))?;
+                    }
+                    write!(
+                        f,
+                        " {} BETWEEN {} AND {}",
+                        window_frame.units,
+                        window_frame.start_bound,
+                        window_frame.end_bound
+                    )
                 }
-                if !order_by.is_empty() {
-                    write!(f, " ORDER BY [{}]", expr_vec_fmt!(order_by))?;
+            },
+            Expr::AggregateFunction(AggregateFunction { func, params }) => {
+                match func.display_name(params) {
+                    Ok(name) => {
+                        write!(f, "{}", name)
+                    }
+                    Err(e) => {
+                        write!(f, "got error from display_name {}", e)
+                    }
                 }
-                write!(
-                    f,
-                    " {} BETWEEN {} AND {}",
-                    window_frame.units, window_frame.start_bound, window_frame.end_bound
-                )?;
-                Ok(())
-            }
-            Expr::AggregateFunction(AggregateFunction {
-                func,
-                distinct,
-                ref args,
-                filter,
-                order_by,
-                null_treatment,
-                ..
-            }) => {
-                fmt_function(f, func.name(), *distinct, args, true)?;
-                if let Some(nt) = null_treatment {
-                    write!(f, " {}", nt)?;
-                }
-                if let Some(fe) = filter {
-                    write!(f, " FILTER (WHERE {fe})")?;
-                }
-                if let Some(ob) = order_by {
-                    write!(f, " ORDER BY [{}]", expr_vec_fmt!(ob))?;
-                }
-                Ok(())
             }
             Expr::Between(Between {
                 expr,
@@ -2713,6 +2744,7 @@ impl Display for Expr {
                     write!(f, "{expr} IN ([{}])", expr_vec_fmt!(list))
                 }
             }
+            #[expect(deprecated)]
             Expr::Wildcard { qualifier, options } => match qualifier {
                 Some(qualifier) => write!(f, "{qualifier}.*{options}"),
                 None => write!(f, "*{options}"),
@@ -2769,10 +2801,10 @@ fn fmt_function(
 /// The name of the column (field) that this `Expr` will produce in the physical plan.
 /// The difference from [Expr::schema_name] is that top-level columns are unqualified.
 pub fn physical_name(expr: &Expr) -> Result<String> {
-    if let Expr::Column(col) = expr {
-        Ok(col.name.clone())
-    } else {
-        Ok(expr.schema_name().to_string())
+    match expr {
+        Expr::Column(col) => Ok(col.name.clone()),
+        Expr::Alias(alias) => Ok(alias.name.clone()),
+        _ => Ok(expr.schema_name().to_string()),
     }
 }
 
@@ -3021,6 +3053,30 @@ mod test {
             ),
             "* RENAME (c1 AS a1)"
         )
+    }
+
+    #[test]
+    fn test_schema_display_alias_with_relation() {
+        assert_eq!(
+            format!(
+                "{}",
+                SchemaDisplay(
+                    &lit(1).alias_qualified("table_name".into(), "column_name")
+                )
+            ),
+            "table_name.column_name"
+        );
+    }
+
+    #[test]
+    fn test_schema_display_alias_without_relation() {
+        assert_eq!(
+            format!(
+                "{}",
+                SchemaDisplay(&lit(1).alias_qualified(None::<&str>, "column_name"))
+            ),
+            "column_name"
+        );
     }
 
     fn wildcard_options(

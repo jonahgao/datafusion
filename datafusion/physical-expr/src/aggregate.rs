@@ -35,23 +35,25 @@ pub mod utils {
     };
 }
 
-use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion_common::ScalarValue;
-use datafusion_common::{internal_err, not_impl_err, Result};
-use datafusion_expr::AggregateUDF;
-use datafusion_expr::ReversedUDAF;
-use datafusion_expr_common::accumulator::Accumulator;
-use datafusion_expr_common::type_coercion::aggregates::check_arg_count;
-use datafusion_functions_aggregate_common::accumulator::AccumulatorArgs;
-use datafusion_functions_aggregate_common::accumulator::StateFieldsArgs;
-use datafusion_functions_aggregate_common::order::AggregateOrderSensitivity;
-use datafusion_physical_expr_common::physical_expr::PhysicalExpr;
-use datafusion_physical_expr_common::sort_expr::LexOrdering;
-use datafusion_physical_expr_common::utils::reverse_order_bys;
-
-use datafusion_expr_common::groups_accumulator::GroupsAccumulator;
 use std::fmt::Debug;
 use std::sync::Arc;
+
+use crate::expressions::Column;
+
+use arrow::compute::SortOptions;
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion_common::{internal_err, not_impl_err, Result, ScalarValue};
+use datafusion_expr::{AggregateUDF, ReversedUDAF, SetMonotonicity};
+use datafusion_expr_common::accumulator::Accumulator;
+use datafusion_expr_common::groups_accumulator::GroupsAccumulator;
+use datafusion_expr_common::type_coercion::aggregates::check_arg_count;
+use datafusion_functions_aggregate_common::accumulator::{
+    AccumulatorArgs, StateFieldsArgs,
+};
+use datafusion_functions_aggregate_common::order::AggregateOrderSensitivity;
+use datafusion_physical_expr_common::physical_expr::PhysicalExpr;
+use datafusion_physical_expr_common::sort_expr::{LexOrdering, PhysicalSortExpr};
+use datafusion_physical_expr_common::utils::reverse_order_bys;
 
 /// Builder for physical [`AggregateFunctionExpr`]
 ///
@@ -89,6 +91,9 @@ impl AggregateExprBuilder {
         }
     }
 
+    /// Constructs an `AggregateFunctionExpr` from the builder
+    ///
+    /// Note that an [`Self::alias`] must be provided before calling this method.
     pub fn build(self) -> Result<AggregateFunctionExpr> {
         let Self {
             fun,
@@ -130,7 +135,11 @@ impl AggregateExprBuilder {
         let data_type = fun.return_type(&input_exprs_types)?;
         let is_nullable = fun.is_nullable();
         let name = match alias {
-            None => return internal_err!("alias should be provided"),
+            None => {
+                return internal_err!(
+                    "AggregateExprBuilder::alias must be provided prior to calling build"
+                )
+            }
             Some(alias) => alias,
         };
 
@@ -197,6 +206,8 @@ impl AggregateExprBuilder {
 }
 
 /// Physical aggregate expression of a UDAF.
+///
+/// Instances are constructed via [`AggregateExprBuilder`].
 #[derive(Debug, Clone)]
 pub struct AggregateFunctionExpr {
     fun: AggregateUDF,
@@ -532,6 +543,28 @@ impl AggregateFunctionExpr {
     /// while `count` returns 0 if input is Null
     pub fn default_value(&self, data_type: &DataType) -> Result<ScalarValue> {
         self.fun.default_value(data_type)
+    }
+
+    /// Indicates whether the aggregation function is monotonic as a set
+    /// function. See [`SetMonotonicity`] for details.
+    pub fn set_monotonicity(&self) -> SetMonotonicity {
+        let field = self.field();
+        let data_type = field.data_type();
+        self.fun.inner().set_monotonicity(data_type)
+    }
+
+    /// Returns `PhysicalSortExpr` based on the set monotonicity of the function.
+    pub fn get_result_ordering(&self, aggr_func_idx: usize) -> Option<PhysicalSortExpr> {
+        // If the aggregate expressions are set-monotonic, the output data is
+        // naturally ordered with it per group or partition.
+        let monotonicity = self.set_monotonicity();
+        if monotonicity == SetMonotonicity::NotMonotonic {
+            return None;
+        }
+        let expr = Arc::new(Column::new(self.name(), aggr_func_idx));
+        let options =
+            SortOptions::new(monotonicity == SetMonotonicity::Decreasing, false);
+        Some(PhysicalSortExpr { expr, options })
     }
 }
 
