@@ -154,6 +154,8 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         // All of the aggregate expressions (deduplicated).
         let aggr_exprs = find_aggregate_exprs(aggr_expr_haystack);
 
+        println!("select group by: {:?}", select.group_by);
+
         // All of the group by expressions
         let group_by_exprs = if let GroupByExpr::Expressions(exprs, _) = select.group_by {
             exprs
@@ -819,6 +821,8 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             .iter()
             .map(|expr| expr_as_column_expr(expr, input))
             .collect::<Result<Vec<Expr>>>()?;
+
+        println!("column_exprs_post_aggr: {:?}", column_exprs_post_aggr);
 
         // next we re-write the projection
         let select_exprs_post_aggr = select_exprs

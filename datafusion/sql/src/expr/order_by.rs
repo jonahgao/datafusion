@@ -15,12 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::collections::HashMap;
+
 use crate::planner::{ContextProvider, PlannerContext, SqlToRel};
 use datafusion_common::tree_node::{
     Transformed, TransformedResult, TreeNode, TreeNodeRecursion,
 };
 use datafusion_common::{
-    not_impl_err, plan_datafusion_err, plan_err, Column, DFSchema, DFSchemaRef, Result,
+    alias, not_impl_err, plan_datafusion_err, plan_err, Column, DFSchema, DFSchemaRef,
+    Result,
 };
 use datafusion_expr::expr::Sort;
 use datafusion_expr::{Expr, SortExpr};
@@ -122,9 +125,24 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         order_by: &mut Vec<Sort>,
     ) -> Result<bool> {
         let mut missing_exprs: IndexSet<Expr> = IndexSet::new();
+
+        let mut aliases = HashMap::new();
+        for (i, expr) in select_exprs.iter().enumerate() {
+            if let Expr::Alias(alias) = expr {
+                aliases.insert(alias.expr.clone(), alias.name.clone());
+            }
+        }
+
         let mut rewrite = |expr: Expr| {
             if select_exprs.contains(&expr) {
                 return Ok(Transformed::new(expr, false, TreeNodeRecursion::Jump));
+            }
+            if let Some(alias) = aliases.get(&expr) {
+                return Ok(Transformed::new(
+                    Expr::Column(Column::new_unqualified(alias.clone())),
+                    false,
+                    TreeNodeRecursion::Jump,
+                ));
             }
             match expr {
                 Expr::AggregateFunction(_) | Expr::WindowFunction(_) => {
