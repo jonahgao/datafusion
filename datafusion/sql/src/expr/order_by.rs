@@ -168,11 +168,11 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                 .transform_down(&mut rewrite)
                 .data()?;
         }
-        println!("missing_exprs: {:?}", missing_exprs);
+        // println!("missing_exprs: {:?}", missing_exprs);
         if !missing_exprs.is_empty() {
             if distinct {
                 return plan_err!(
-                    "ORDER BY expression must appear in the select list when using DISTINCT"
+                    "For SELECT DISTINCT, ORDER BY expressions {} must appear in select list", missing_exprs[0]
                 );
             }
             select_exprs.extend(missing_exprs);

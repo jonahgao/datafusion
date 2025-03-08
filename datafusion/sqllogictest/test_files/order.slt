@@ -959,7 +959,8 @@ SELECT SUM(column1) FROM foo ORDER BY SUM(column1)
 16
 
 # Order by unprojected aggregate expressions is not supported
-query error DataFusion error: This feature is not implemented: Physical plan does not support logical expression AggregateFunction
+# query error DataFusion error: This feature is not implemented: Physical plan does not support logical expression AggregateFunction
+query error Projection references non-aggregate values
 SELECT column2 FROM foo ORDER BY SUM(column1)
 
 statement ok
