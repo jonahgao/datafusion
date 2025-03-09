@@ -22,8 +22,7 @@ use datafusion_common::tree_node::{
     Transformed, TransformedResult, TreeNode, TreeNodeRecursion,
 };
 use datafusion_common::{
-    alias, not_impl_err, plan_datafusion_err, plan_err, Column, DFSchema, DFSchemaRef,
-    Result,
+    not_impl_err, plan_datafusion_err, plan_err, Column, DFSchema, DFSchemaRef, Result,
 };
 use datafusion_expr::expr::Sort;
 use datafusion_expr::{Expr, SortExpr};
@@ -122,12 +121,12 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         select_exprs: &mut Vec<Expr>,
         schema: &DFSchemaRef,
         distinct: bool,
-        order_by: &mut Vec<Sort>,
+        order_by: &mut [Sort],
     ) -> Result<bool> {
         let mut missing_exprs: IndexSet<Expr> = IndexSet::new();
 
         let mut aliases = HashMap::new();
-        for (i, expr) in select_exprs.iter().enumerate() {
+        for expr in select_exprs.iter() {
             if let Expr::Alias(alias) = expr {
                 aliases.insert(alias.expr.clone(), alias.name.clone());
             }
@@ -153,7 +152,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                     Ok(Transformed::new(replaced, true, TreeNodeRecursion::Jump))
                 }
                 Expr::Column(ref c) => {
-                    if !schema.has_column(&c) {
+                    if !schema.has_column(c) {
                         missing_exprs.insert(Expr::Column(c.clone()));
                     }
                     Ok(Transformed::new(expr, false, TreeNodeRecursion::Jump))
@@ -171,12 +170,13 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         // println!("missing_exprs: {:?}", missing_exprs);
         if !missing_exprs.is_empty() {
             if distinct {
-                return plan_err!(
+                plan_err!(
                     "For SELECT DISTINCT, ORDER BY expressions {} must appear in select list", missing_exprs[0]
-                );
+                )
+            } else {
+                select_exprs.extend(missing_exprs);
+                Ok(true)
             }
-            select_exprs.extend(missing_exprs);
-            Ok(true)
         } else {
             Ok(false)
         }

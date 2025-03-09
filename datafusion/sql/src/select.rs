@@ -27,9 +27,9 @@ use crate::utils::{
 
 use datafusion_common::error::DataFusionErrorBuilder;
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
-use datafusion_common::{not_impl_err, plan_err, Column, DFSchemaRef, Result};
+use datafusion_common::{not_impl_err, plan_err, Result};
 use datafusion_common::{RecursionUnnestOption, UnnestOptions};
-use datafusion_expr::expr::{Alias, PlannedReplaceSelectItem, Sort, WildcardOptions};
+use datafusion_expr::expr::{Alias, PlannedReplaceSelectItem, WildcardOptions};
 use datafusion_expr::expr_rewriter::{
     normalize_col, normalize_col_with_schemas_and_ambiguity_check, normalize_sorts,
 };
@@ -42,7 +42,7 @@ use datafusion_expr::{
     Partitioning,
 };
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use sqlparser::ast::{
     Distinct, Expr as SQLExpr, GroupByExpr, NamedWindowExpr, OrderByExpr,
     WildcardAdditionalOptions, WindowType,
