@@ -6017,3 +6017,30 @@ async fn test_insert_into_casting_support() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn test_missing_aggr() -> Result<()> {
+    let left = create_test_table("test")
+        .await?
+        .select(vec![col("a").alias("b")])?;
+
+    let right = create_test_table("test")
+        .await?
+        .aggregate(vec![col("a")], vec![])?;
+
+    let df = left
+        .join(right, JoinType::Inner, &["b"], &["a"], None)?
+        .sort_by(vec![min(col("a"))])?;
+
+    let plan = df
+        .clone()
+        .into_optimized_plan()?
+        .display_indent_schema()
+        .to_string();
+    println!("{plan}");
+
+    let results = df.collect().await?;
+    println!("{}", pretty_format_batches(&results)?);
+
+    Ok(())
+}
