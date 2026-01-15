@@ -180,29 +180,24 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                     // Normalize name and alias
                     let table_ref = self.object_name_to_table_reference(name)?;
                     let table_name = table_ref.to_string();
-                    let cte = planner_context.get_cte(&table_name);
-                    (
-                        match (
-                            cte,
-                            self.context_provider.get_table_source(table_ref.clone()),
-                        ) {
-                            (Some(cte_plan), _) => Ok(cte_plan.clone()),
-                            (_, Ok(provider)) => LogicalPlanBuilder::scan(
-                                table_ref.clone(),
-                                provider,
-                                None,
-                            )?
-                            .build(),
-                            (None, Err(e)) => {
-                                let e = e.with_diagnostic(Diagnostic::new_error(
+                    let plan = if let Some(cte_plan) =
+                        planner_context.get_cte(&table_name)
+                    {
+                        cte_plan.clone()
+                    } else {
+                        let table_source = self
+                            .context_provider
+                            .get_table_source(table_ref.clone())
+                            .map_err(|e| {
+                                e.with_diagnostic(Diagnostic::new_error(
                                     format!("table '{table_ref}' not found"),
                                     Span::try_from_sqlparser_span(relation_span),
-                                ));
-                                Err(e)
-                            }
-                        }?,
-                        alias,
-                    )
+                                ))
+                            })?;
+                        LogicalPlanBuilder::scan(table_ref.clone(), table_source, None)?
+                            .build()?
+                    };
+                    (plan, alias)
                 }
             }
             TableFactor::Derived {

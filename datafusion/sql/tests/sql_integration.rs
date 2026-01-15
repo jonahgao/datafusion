@@ -36,7 +36,7 @@ use datafusion_expr::{
 use datafusion_functions::{string, unicode};
 use datafusion_sql::{
     parser::DFParser,
-    planner::{NullOrdering, ParserOptions, SqlToRel},
+    planner::{ContextProvider, NullOrdering, ParserOptions, SqlToRel},
 };
 
 use crate::common::{CustomExprPlanner, CustomTypePlanner, MockSessionState};
@@ -4854,4 +4854,61 @@ fn test_using_join_wildcard_schema() {
             "t3.d".to_string()
         ]
     );
+}
+
+// Should not lookup CTEs from the ContextProvider.
+#[test]
+fn test_resolve_cte_reference() {
+    use datafusion_common::{TableReference, config::ConfigOptions};
+    use datafusion_expr::{AggregateUDF, ScalarUDF, TableSource, WindowUDF};
+
+    // A special ContextProvider that panics if `get_table_source` is called.
+    pub(crate) struct UnreachableContextProvider {
+        pub(crate) state: MockSessionState,
+    }
+
+    impl ContextProvider for UnreachableContextProvider {
+        fn get_table_source(&self, name: TableReference) -> Result<Arc<dyn TableSource>> {
+            unreachable!("get_table_source called with '{}'", name);
+        }
+
+        fn get_function_meta(&self, _name: &str) -> Option<Arc<ScalarUDF>> {
+            None
+        }
+
+        fn get_aggregate_meta(&self, _name: &str) -> Option<Arc<AggregateUDF>> {
+            None
+        }
+
+        fn get_variable_type(&self, _variable_names: &[String]) -> Option<DataType> {
+            None
+        }
+
+        fn get_window_meta(&self, _name: &str) -> Option<Arc<WindowUDF>> {
+            None
+        }
+
+        fn options(&self) -> &ConfigOptions {
+            &self.state.config_options
+        }
+
+        fn udf_names(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn udaf_names(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn udwf_names(&self) -> Vec<String> {
+            Vec::new()
+        }
+    }
+
+    let state = MockSessionState::default();
+    let context = UnreachableContextProvider { state };
+    let planner = SqlToRel::new(&context);
+    let mut ast =
+        DFParser::parse_sql("WITH cte AS (SELECT 1) SELECT * FROM cte").unwrap();
+    planner.statement_to_plan(ast.pop_front().unwrap()).unwrap();
 }
